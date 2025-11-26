@@ -1,6 +1,10 @@
 import { AppLayout } from '@/components/AppLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ProcessesTable } from '@/components/tables/ProcessesTable';
+import { SystemsTable } from '@/components/tables/SystemsTable';
+import { CriticalOperationsTable } from '@/components/tables/CriticalOperationsTable';
+import { ControlsTable } from '@/components/tables/ControlsTable';
 
 export default function Data() {
   return (
@@ -22,9 +26,7 @@ export default function Data() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex h-[400px] items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg bg-muted/10">
-                <p className="text-muted-foreground">Processes table will be displayed here</p>
-              </div>
+              <ProcessesTable />
             </CardContent>
           </Card>
         </TabsContent>
@@ -38,9 +40,7 @@ export default function Data() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex h-[400px] items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg bg-muted/10">
-                <p className="text-muted-foreground">Systems table will be displayed here</p>
-              </div>
+              <SystemsTable />
             </CardContent>
           </Card>
         </TabsContent>
@@ -54,11 +54,7 @@ export default function Data() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex h-[400px] items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg bg-muted/10">
-                <p className="text-muted-foreground">
-                  Critical Operations table will be displayed here
-                </p>
-              </div>
+              <CriticalOperationsTable />
             </CardContent>
           </Card>
         </TabsContent>
@@ -72,9 +68,7 @@ export default function Data() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex h-[400px] items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg bg-muted/10">
-                <p className="text-muted-foreground">Controls table will be displayed here</p>
-              </div>
+              <ControlsTable />
             </CardContent>
           </Card>
         </TabsContent>

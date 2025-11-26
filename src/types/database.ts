@@ -20,6 +20,8 @@ export interface Database {
           owner_username: string | null
           input_processes: string[] | null
           output_processes: string[] | null
+          canvas_position: Json | null
+          metadata: Json | null
           modified_by: string
           modified_date: string
           created_at: string
@@ -31,6 +33,8 @@ export interface Database {
           owner_username?: string | null
           input_processes?: string[] | null
           output_processes?: string[] | null
+          canvas_position?: Json | null
+          metadata?: Json | null
           modified_by: string
           modified_date?: string
           created_at?: string
@@ -42,6 +46,8 @@ export interface Database {
           owner_username?: string | null
           input_processes?: string[] | null
           output_processes?: string[] | null
+          canvas_position?: Json | null
+          metadata?: Json | null
           modified_by?: string
           modified_date?: string
           created_at?: string
@@ -52,6 +58,8 @@ export interface Database {
           id: string
           system_name: string
           system_id: string
+          description: string | null
+          metadata: Json | null
           modified_by: string
           modified_date: string
           created_at: string
@@ -60,6 +68,8 @@ export interface Database {
           id?: string
           system_name: string
           system_id: string
+          description?: string | null
+          metadata?: Json | null
           modified_by: string
           modified_date?: string
           created_at?: string
@@ -68,6 +78,8 @@ export interface Database {
           id?: string
           system_name?: string
           system_id?: string
+          description?: string | null
+          metadata?: Json | null
           modified_by?: string
           modified_date?: string
           created_at?: string
@@ -77,8 +89,10 @@ export interface Database {
         Row: {
           id: string
           operation_name: string
+          description: string | null
           system_id: string | null
           process_id: string | null
+          color_code: string | null
           modified_by: string
           modified_date: string
           created_at: string
@@ -86,8 +100,10 @@ export interface Database {
         Insert: {
           id?: string
           operation_name: string
+          description?: string | null
           system_id?: string | null
           process_id?: string | null
+          color_code?: string | null
           modified_by: string
           modified_date?: string
           created_at?: string
@@ -95,8 +111,10 @@ export interface Database {
         Update: {
           id?: string
           operation_name?: string
+          description?: string | null
           system_id?: string | null
           process_id?: string | null
+          color_code?: string | null
           modified_by?: string
           modified_date?: string
           created_at?: string
@@ -105,30 +123,39 @@ export interface Database {
       controls: {
         Row: {
           id: string
+          control_name: string
+          description: string | null
           critical_operation_id: string | null
           process_id: string | null
           system_id: string | null
           regions: string[] | null
+          control_type: string | null
           modified_by: string
           modified_date: string
           created_at: string
         }
         Insert: {
           id?: string
+          control_name: string
+          description?: string | null
           critical_operation_id?: string | null
           process_id?: string | null
           system_id?: string | null
           regions?: string[] | null
+          control_type?: string | null
           modified_by: string
           modified_date?: string
           created_at?: string
         }
         Update: {
           id?: string
+          control_name?: string
+          description?: string | null
           critical_operation_id?: string | null
           process_id?: string | null
           system_id?: string | null
           regions?: string[] | null
+          control_type?: string | null
           modified_by?: string
           modified_date?: string
           created_at?: string
