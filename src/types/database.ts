@@ -1,0 +1,238 @@
+// Database types generated from Supabase schema
+// This will be updated once the database schema is created
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export interface Database {
+  public: {
+    Tables: {
+      processes: {
+        Row: {
+          id: string
+          process_name: string
+          process_unique_id: string
+          owner_username: string | null
+          input_processes: string[] | null
+          output_processes: string[] | null
+          canvas_position: Json | null
+          metadata: Json | null
+          modified_by: string
+          modified_date: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          process_name: string
+          process_unique_id: string
+          owner_username?: string | null
+          input_processes?: string[] | null
+          output_processes?: string[] | null
+          canvas_position?: Json | null
+          metadata?: Json | null
+          modified_by: string
+          modified_date?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          process_name?: string
+          process_unique_id?: string
+          owner_username?: string | null
+          input_processes?: string[] | null
+          output_processes?: string[] | null
+          canvas_position?: Json | null
+          metadata?: Json | null
+          modified_by?: string
+          modified_date?: string
+          created_at?: string
+        }
+      }
+      systems: {
+        Row: {
+          id: string
+          system_name: string
+          system_id: string
+          description: string | null
+          metadata: Json | null
+          modified_by: string
+          modified_date: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          system_name: string
+          system_id: string
+          description?: string | null
+          metadata?: Json | null
+          modified_by: string
+          modified_date?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          system_name?: string
+          system_id?: string
+          description?: string | null
+          metadata?: Json | null
+          modified_by?: string
+          modified_date?: string
+          created_at?: string
+        }
+      }
+      critical_operations: {
+        Row: {
+          id: string
+          operation_name: string
+          description: string | null
+          system_id: string | null
+          process_id: string | null
+          color_code: string | null
+          modified_by: string
+          modified_date: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          operation_name: string
+          description?: string | null
+          system_id?: string | null
+          process_id?: string | null
+          color_code?: string | null
+          modified_by: string
+          modified_date?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          operation_name?: string
+          description?: string | null
+          system_id?: string | null
+          process_id?: string | null
+          color_code?: string | null
+          modified_by?: string
+          modified_date?: string
+          created_at?: string
+        }
+      }
+      controls: {
+        Row: {
+          id: string
+          control_name: string
+          description: string | null
+          critical_operation_id: string | null
+          process_id: string | null
+          system_id: string | null
+          regions: string[] | null
+          control_type: string | null
+          modified_by: string
+          modified_date: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          control_name: string
+          description?: string | null
+          critical_operation_id?: string | null
+          process_id?: string | null
+          system_id?: string | null
+          regions?: string[] | null
+          control_type?: string | null
+          modified_by: string
+          modified_date?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          control_name?: string
+          description?: string | null
+          critical_operation_id?: string | null
+          process_id?: string | null
+          system_id?: string | null
+          regions?: string[] | null
+          control_type?: string | null
+          modified_by?: string
+          modified_date?: string
+          created_at?: string
+        }
+      }
+      user_profiles: {
+        Row: {
+          id: string
+          user_id: string
+          email: string
+          full_name: string | null
+          role: 'user' | 'business_analyst' | 'promaster'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          email: string
+          full_name?: string | null
+          role?: 'user' | 'business_analyst' | 'promaster'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          email?: string
+          full_name?: string | null
+          role?: 'user' | 'business_analyst' | 'promaster'
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      settings: {
+        Row: {
+          id: string
+          key: string
+          value: Json
+          modified_by: string
+          modified_date: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          key: string
+          value: Json
+          modified_by: string
+          modified_date?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          key?: string
+          value?: Json
+          modified_by?: string
+          modified_date?: string
+          created_at?: string
+        }
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      user_role: 'user' | 'business_analyst' | 'promaster'
+    }
+  }
+}
+
+export type UserRole = Database['public']['Enums']['user_role'];
+export type Process = Database['public']['Tables']['processes']['Row'];
+export type System = Database['public']['Tables']['systems']['Row'];
+export type CriticalOperation = Database['public']['Tables']['critical_operations']['Row'];
+export type Control = Database['public']['Tables']['controls']['Row'];
+export type UserProfile = Database['public']['Tables']['user_profiles']['Row'];
+export type Setting = Database['public']['Tables']['settings']['Row'];
