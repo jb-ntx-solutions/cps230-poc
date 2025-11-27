@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import type { UserProfile } from '@/types/database';
+import { createUserProfileWithAccount } from '@/lib/accounts';
 
 interface AuthContextType {
   user: User | null;
@@ -9,7 +10,13 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName?: string) => Promise<void>;
+  signUp: (
+    email: string,
+    password: string,
+    fullName: string | undefined,
+    accountId: string,
+    isFirstUser: boolean
+  ) => Promise<void>;
   signOut: () => Promise<void>;
   isPromaster: boolean;
   isBusinessAnalyst: boolean;
@@ -77,17 +84,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
   };
 
-  const signUp = async (email: string, password: string, fullName?: string) => {
-    const { error } = await supabase.auth.signUp({
+  const signUp = async (
+    email: string,
+    password: string,
+    fullName: string | undefined,
+    accountId: string,
+    isFirstUser: boolean
+  ) => {
+    // Create the auth user first
+    const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: fullName,
         },
+        // Disable email confirmation for development - remove this in production
+        emailRedirectTo: window.location.origin,
       },
     });
-    if (error) throw error;
+
+    if (authError) throw authError;
+    if (!authData.user) throw new Error('Failed to create user');
+
+    // Create the user profile with account association
+    try {
+      await createUserProfileWithAccount(
+        authData.user.id,
+        email,
+        accountId,
+        isFirstUser,
+        fullName
+      );
+    } catch (profileError: any) {
+      // If profile creation fails, we should ideally delete the auth user
+      // but Supabase doesn't allow that from the client side
+      console.error('Failed to create user profile:', profileError);
+      throw new Error(`Account created but profile setup failed: ${profileError.message}`);
+    }
   };
 
   const signOut = async () => {
