@@ -3,7 +3,7 @@
 -- All users and data will be scoped to an account based on email domain
 
 -- =====================================================
--- Create Accounts Table
+-- Step 1: Create Accounts Table (without RLS policies yet)
 -- =====================================================
 CREATE TABLE IF NOT EXISTS public.accounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -13,47 +13,22 @@ CREATE TABLE IF NOT EXISTS public.accounts (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Enable RLS on accounts table
+-- Enable RLS on accounts table (policies will be added later)
 ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
 
--- Accounts policies - users can only see their own account
-CREATE POLICY "Users can view their own account"
-    ON public.accounts FOR SELECT
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.user_profiles
-            WHERE user_profiles.user_id = auth.uid()
-            AND user_profiles.account_id = accounts.id
-        )
-    );
-
--- Only promasters can update their account
-CREATE POLICY "Promasters can update their account"
-    ON public.accounts FOR UPDATE
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.user_profiles
-            WHERE user_profiles.user_id = auth.uid()
-            AND user_profiles.account_id = accounts.id
-            AND user_profiles.role = 'promaster'
-        )
-    );
-
 -- Index for performance
-CREATE INDEX idx_accounts_email_domain ON public.accounts(email_domain);
+CREATE INDEX IF NOT EXISTS idx_accounts_email_domain ON public.accounts(email_domain);
 
 -- =====================================================
--- Add account_id to user_profiles
+-- Step 2: Add account_id columns to all tables
 -- =====================================================
+
+-- Add to user_profiles table
 ALTER TABLE public.user_profiles
 ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES public.accounts(id) ON DELETE CASCADE;
 
 -- Create index for account_id on user_profiles
 CREATE INDEX IF NOT EXISTS idx_user_profiles_account_id ON public.user_profiles(account_id);
-
--- =====================================================
--- Add account_id to all data tables
--- =====================================================
 
 -- Add to processes table
 ALTER TABLE public.processes
@@ -86,8 +61,31 @@ ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES public.accounts(id) ON DELET
 CREATE INDEX IF NOT EXISTS idx_sync_history_account_id ON public.sync_history(account_id);
 
 -- =====================================================
--- Update Row Level Security Policies
+-- Step 3: Create/Update Row Level Security Policies
+-- Now that all account_id columns exist, we can create policies
 -- =====================================================
+
+-- First, create policies for accounts table
+CREATE POLICY "Users can view their own account"
+    ON public.accounts FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.user_profiles
+            WHERE user_profiles.user_id = auth.uid()
+            AND user_profiles.account_id = accounts.id
+        )
+    );
+
+CREATE POLICY "Promasters can update their account"
+    ON public.accounts FOR UPDATE
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.user_profiles
+            WHERE user_profiles.user_id = auth.uid()
+            AND user_profiles.account_id = accounts.id
+            AND user_profiles.role = 'promaster'
+        )
+    );
 
 -- Drop old user_profiles policies
 DROP POLICY IF EXISTS "Users can view own profile" ON public.user_profiles;
@@ -301,7 +299,7 @@ CREATE POLICY "Promasters can insert sync history in their account"
     );
 
 -- =====================================================
--- Functions for account-aware signup
+-- Step 4: Functions for account-aware signup
 -- =====================================================
 
 -- Function to get or create account by email domain
