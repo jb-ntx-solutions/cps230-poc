@@ -12,6 +12,29 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      accounts: {
+        Row: {
+          id: string
+          account_name: string
+          email_domain: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          account_name: string
+          email_domain: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          account_name?: string
+          email_domain?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
       processes: {
         Row: {
           id: string
@@ -25,6 +48,7 @@ export interface Database {
           modified_by: string
           modified_date: string
           created_at: string
+          account_id: string | null
         }
         Insert: {
           id?: string
@@ -38,6 +62,7 @@ export interface Database {
           modified_by: string
           modified_date?: string
           created_at?: string
+          account_id?: string | null
         }
         Update: {
           id?: string
@@ -51,6 +76,7 @@ export interface Database {
           modified_by?: string
           modified_date?: string
           created_at?: string
+          account_id?: string | null
         }
       }
       systems: {
@@ -63,6 +89,7 @@ export interface Database {
           modified_by: string
           modified_date: string
           created_at: string
+          account_id: string | null
         }
         Insert: {
           id?: string
@@ -73,6 +100,7 @@ export interface Database {
           modified_by: string
           modified_date?: string
           created_at?: string
+          account_id?: string | null
         }
         Update: {
           id?: string
@@ -83,6 +111,7 @@ export interface Database {
           modified_by?: string
           modified_date?: string
           created_at?: string
+          account_id?: string | null
         }
       }
       critical_operations: {
@@ -96,6 +125,7 @@ export interface Database {
           modified_by: string
           modified_date: string
           created_at: string
+          account_id: string | null
         }
         Insert: {
           id?: string
@@ -107,6 +137,7 @@ export interface Database {
           modified_by: string
           modified_date?: string
           created_at?: string
+          account_id?: string | null
         }
         Update: {
           id?: string
@@ -118,6 +149,7 @@ export interface Database {
           modified_by?: string
           modified_date?: string
           created_at?: string
+          account_id?: string | null
         }
       }
       controls: {
@@ -133,6 +165,7 @@ export interface Database {
           modified_by: string
           modified_date: string
           created_at: string
+          account_id: string | null
         }
         Insert: {
           id?: string
@@ -146,6 +179,7 @@ export interface Database {
           modified_by: string
           modified_date?: string
           created_at?: string
+          account_id?: string | null
         }
         Update: {
           id?: string
@@ -159,6 +193,7 @@ export interface Database {
           modified_by?: string
           modified_date?: string
           created_at?: string
+          account_id?: string | null
         }
       }
       user_profiles: {
@@ -168,6 +203,7 @@ export interface Database {
           email: string
           full_name: string | null
           role: 'user' | 'business_analyst' | 'promaster'
+          account_id: string | null
           created_at: string
           updated_at: string
         }
@@ -177,6 +213,7 @@ export interface Database {
           email: string
           full_name?: string | null
           role?: 'user' | 'business_analyst' | 'promaster'
+          account_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -186,6 +223,7 @@ export interface Database {
           email?: string
           full_name?: string | null
           role?: 'user' | 'business_analyst' | 'promaster'
+          account_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -198,6 +236,7 @@ export interface Database {
           modified_by: string
           modified_date: string
           created_at: string
+          account_id: string | null
         }
         Insert: {
           id?: string
@@ -206,6 +245,7 @@ export interface Database {
           modified_by: string
           modified_date?: string
           created_at?: string
+          account_id?: string | null
         }
         Update: {
           id?: string
@@ -214,6 +254,7 @@ export interface Database {
           modified_by?: string
           modified_date?: string
           created_at?: string
+          account_id?: string | null
         }
       }
     }
@@ -230,6 +271,7 @@ export interface Database {
 }
 
 export type UserRole = Database['public']['Enums']['user_role'];
+export type Account = Database['public']['Tables']['accounts']['Row'];
 export type Process = Database['public']['Tables']['processes']['Row'];
 export type System = Database['public']['Tables']['systems']['Row'];
 export type CriticalOperation = Database['public']['Tables']['critical_operations']['Row'];
