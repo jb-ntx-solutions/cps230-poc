@@ -55,6 +55,12 @@ ALTER TABLE public.settings
 ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES public.accounts(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_settings_account_id ON public.settings(account_id);
 
+-- Update settings unique constraint to allow per-account settings
+-- Drop the old constraint that made key unique globally
+ALTER TABLE public.settings DROP CONSTRAINT IF EXISTS settings_key_key;
+-- Add new constraint that makes (key, account_id) unique together
+ALTER TABLE public.settings ADD CONSTRAINT settings_key_account_unique UNIQUE (key, account_id);
+
 -- Add to sync_history table
 ALTER TABLE public.sync_history
 ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES public.accounts(id) ON DELETE CASCADE;
