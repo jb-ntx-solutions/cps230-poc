@@ -30,7 +30,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { UserProfile, UserRole } from '@/types/database';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Users() {
@@ -38,10 +38,17 @@ export default function Users() {
   const { toast } = useToast();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
-  const [formData, setFormData] = useState({
+  const [addFormData, setAddFormData] = useState({
+    email: '',
+    password: '',
+    full_name: '',
+    role: 'user' as UserRole,
+  });
+  const [editFormData, setEditFormData] = useState({
     full_name: '',
     role: 'user' as UserRole,
   });
@@ -77,6 +84,61 @@ export default function Users() {
     }
   };
 
+  const handleAddUser = async () => {
+    if (!profile?.account_id) return;
+
+    // Validate inputs
+    if (!addFormData.email || !addFormData.password) {
+      toast({
+        title: 'Error',
+        description: 'Email and password are required',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (addFormData.password.length < 6) {
+      toast({
+        title: 'Error',
+        description: 'Password must be at least 6 characters',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Call the edge function to create the user
+      const { data, error } = await supabase.functions.invoke('create-user', {
+        body: {
+          email: addFormData.email,
+          password: addFormData.password,
+          full_name: addFormData.full_name || null,
+          role: addFormData.role,
+          account_id: profile.account_id,
+        },
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error || 'Failed to create user');
+
+      toast({
+        title: 'Success',
+        description: 'User created successfully',
+      });
+
+      setIsAddDialogOpen(false);
+      resetAddForm();
+      fetchUsers();
+    } catch (error: any) {
+      console.error('Error creating user:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to create user',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleUpdateUser = async () => {
     if (!selectedUser) return;
 
@@ -84,8 +146,8 @@ export default function Users() {
       const { error } = await supabase
         .from('user_profiles')
         .update({
-          full_name: formData.full_name || null,
-          role: formData.role,
+          full_name: editFormData.full_name || null,
+          role: editFormData.role,
         })
         .eq('id', selectedUser.id);
 
@@ -98,7 +160,7 @@ export default function Users() {
 
       setIsEditDialogOpen(false);
       setSelectedUser(null);
-      resetForm();
+      resetEditForm();
       fetchUsers();
     } catch (error: any) {
       console.error('Error updating user:', error);
@@ -141,7 +203,7 @@ export default function Users() {
 
   const openEditDialog = (user: UserProfile) => {
     setSelectedUser(user);
-    setFormData({
+    setEditFormData({
       full_name: user.full_name || '',
       role: user.role,
     });
@@ -153,8 +215,17 @@ export default function Users() {
     setIsDeleteDialogOpen(true);
   };
 
-  const resetForm = () => {
-    setFormData({
+  const resetAddForm = () => {
+    setAddFormData({
+      email: '',
+      password: '',
+      full_name: '',
+      role: 'user',
+    });
+  };
+
+  const resetEditForm = () => {
+    setEditFormData({
       full_name: '',
       role: 'user',
     });
@@ -180,9 +251,18 @@ export default function Users() {
           <div>
             <h2 className="text-2xl font-bold">User Management</h2>
             <p className="text-muted-foreground">
-              View and manage user roles. New users can sign up using the registration page.
+              Manage user access and permissions
             </p>
           </div>
+          {isPromaster && (
+            <Button
+              onClick={() => setIsAddDialogOpen(true)}
+              className="bg-nintex-orange hover:bg-nintex-orange-hover"
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add User
+            </Button>
+          )}
         </div>
 
         <Card>
@@ -252,6 +332,100 @@ export default function Users() {
         </Card>
       </div>
 
+      {/* Add User Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Add New User</DialogTitle>
+            <DialogDescription>
+              Create a new user account for your organization
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="add_email">
+                Email <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="add_email"
+                type="email"
+                value={addFormData.email}
+                onChange={(e) =>
+                  setAddFormData({ ...addFormData, email: e.target.value })
+                }
+                placeholder="user@example.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="add_password">
+                Password <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="add_password"
+                type="password"
+                value={addFormData.password}
+                onChange={(e) =>
+                  setAddFormData({ ...addFormData, password: e.target.value })
+                }
+                placeholder="Minimum 6 characters"
+              />
+              <p className="text-xs text-muted-foreground">
+                User can change this password after first login
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="add_full_name">Full Name</Label>
+              <Input
+                id="add_full_name"
+                value={addFormData.full_name}
+                onChange={(e) =>
+                  setAddFormData({ ...addFormData, full_name: e.target.value })
+                }
+                placeholder="John Doe"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="add_role">Role</Label>
+              <Select
+                value={addFormData.role}
+                onValueChange={(value) =>
+                  setAddFormData({ ...addFormData, role: value as UserRole })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="business_analyst">Business Analyst</SelectItem>
+                  <SelectItem value="promaster">Promaster</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAddDialogOpen(false);
+                resetAddForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddUser}
+              className="bg-nintex-orange hover:bg-nintex-orange-hover"
+            >
+              Create User
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit User Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
@@ -271,9 +445,9 @@ export default function Users() {
                 <Label htmlFor="edit_full_name">Full Name</Label>
                 <Input
                   id="edit_full_name"
-                  value={formData.full_name}
+                  value={editFormData.full_name}
                   onChange={(e) =>
-                    setFormData({ ...formData, full_name: e.target.value })
+                    setEditFormData({ ...editFormData, full_name: e.target.value })
                   }
                   placeholder="John Doe"
                 />
@@ -281,9 +455,9 @@ export default function Users() {
               <div className="space-y-2">
                 <Label htmlFor="edit_role">Role</Label>
                 <Select
-                  value={formData.role}
+                  value={editFormData.role}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, role: value as UserRole })
+                    setEditFormData({ ...editFormData, role: value as UserRole })
                   }
                 >
                   <SelectTrigger>
