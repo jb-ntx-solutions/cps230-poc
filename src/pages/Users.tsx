@@ -30,7 +30,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { UserProfile, UserRole } from '@/types/database';
-import { Pencil, Trash2, UserPlus, Copy, Check } from 'lucide-react';
+import { Pencil, Trash2, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Users() {
@@ -42,8 +42,13 @@ export default function Users() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
-  const [copiedSignupUrl, setCopiedSignupUrl] = useState(false);
-  const [formData, setFormData] = useState({
+  const [addFormData, setAddFormData] = useState({
+    email: '',
+    password: '',
+    full_name: '',
+    role: 'user' as UserRole,
+  });
+  const [editFormData, setEditFormData] = useState({
     full_name: '',
     role: 'user' as UserRole,
   });
@@ -79,6 +84,61 @@ export default function Users() {
     }
   };
 
+  const handleAddUser = async () => {
+    if (!profile?.account_id) return;
+
+    // Validate inputs
+    if (!addFormData.email || !addFormData.password) {
+      toast({
+        title: 'Error',
+        description: 'Email and password are required',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (addFormData.password.length < 6) {
+      toast({
+        title: 'Error',
+        description: 'Password must be at least 6 characters',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Call the edge function to create the user
+      const { data, error } = await supabase.functions.invoke('create-user', {
+        body: {
+          email: addFormData.email,
+          password: addFormData.password,
+          full_name: addFormData.full_name || null,
+          role: addFormData.role,
+          account_id: profile.account_id,
+        },
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error || 'Failed to create user');
+
+      toast({
+        title: 'Success',
+        description: 'User created successfully',
+      });
+
+      setIsAddDialogOpen(false);
+      resetAddForm();
+      fetchUsers();
+    } catch (error: any) {
+      console.error('Error creating user:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to create user',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleUpdateUser = async () => {
     if (!selectedUser) return;
 
@@ -86,8 +146,8 @@ export default function Users() {
       const { error } = await supabase
         .from('user_profiles')
         .update({
-          full_name: formData.full_name || null,
-          role: formData.role,
+          full_name: editFormData.full_name || null,
+          role: editFormData.role,
         })
         .eq('id', selectedUser.id);
 
@@ -100,7 +160,7 @@ export default function Users() {
 
       setIsEditDialogOpen(false);
       setSelectedUser(null);
-      resetForm();
+      resetEditForm();
       fetchUsers();
     } catch (error: any) {
       console.error('Error updating user:', error);
@@ -143,7 +203,7 @@ export default function Users() {
 
   const openEditDialog = (user: UserProfile) => {
     setSelectedUser(user);
-    setFormData({
+    setEditFormData({
       full_name: user.full_name || '',
       role: user.role,
     });
@@ -155,21 +215,19 @@ export default function Users() {
     setIsDeleteDialogOpen(true);
   };
 
-  const resetForm = () => {
-    setFormData({
+  const resetAddForm = () => {
+    setAddFormData({
+      email: '',
+      password: '',
       full_name: '',
       role: 'user',
     });
   };
 
-  const handleCopySignupUrl = () => {
-    const signupUrl = `${window.location.origin}/signup`;
-    navigator.clipboard.writeText(signupUrl);
-    setCopiedSignupUrl(true);
-    setTimeout(() => setCopiedSignupUrl(false), 2000);
-    toast({
-      title: 'Copied!',
-      description: 'Signup URL copied to clipboard',
+  const resetEditForm = () => {
+    setEditFormData({
+      full_name: '',
+      role: 'user',
     });
   };
 
@@ -193,7 +251,7 @@ export default function Users() {
           <div>
             <h2 className="text-2xl font-bold">User Management</h2>
             <p className="text-muted-foreground">
-              View and manage user roles
+              Manage user access and permissions
             </p>
           </div>
           {isPromaster && (
@@ -280,58 +338,89 @@ export default function Users() {
           <DialogHeader>
             <DialogTitle>Add New User</DialogTitle>
             <DialogDescription>
-              Invite a new user to join your account
+              Create a new user account for your organization
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <h4 className="font-medium text-sm">How to add a new user:</h4>
-              <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                <li>Share the signup URL below with the new user</li>
-                <li>They will create their account using their company email</li>
-                <li>Users with the same email domain will automatically join your account</li>
-                <li>After they sign up, you can edit their role here</li>
-              </ol>
+              <Label htmlFor="add_email">
+                Email <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="add_email"
+                type="email"
+                value={addFormData.email}
+                onChange={(e) =>
+                  setAddFormData({ ...addFormData, email: e.target.value })
+                }
+                placeholder="user@example.com"
+              />
             </div>
 
             <div className="space-y-2">
-              <Label>Signup URL</Label>
-              <div className="flex gap-2">
-                <Input
-                  readOnly
-                  value={`${window.location.origin}/signup`}
-                  className="font-mono text-sm"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={handleCopySignupUrl}
-                >
-                  {copiedSignupUrl ? (
-                    <Check className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+              <Label htmlFor="add_password">
+                Password <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="add_password"
+                type="password"
+                value={addFormData.password}
+                onChange={(e) =>
+                  setAddFormData({ ...addFormData, password: e.target.value })
+                }
+                placeholder="Minimum 6 characters"
+              />
+              <p className="text-xs text-muted-foreground">
+                User can change this password after first login
+              </p>
             </div>
 
-            <div className="rounded-lg bg-muted p-4 space-y-2">
-              <h4 className="font-medium text-sm flex items-center gap-2">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Note
-              </h4>
-              <p className="text-sm text-muted-foreground">
-                New users will be created with the "User" role by default. You can change their role after they sign up by using the Edit button in the users table.
-              </p>
+            <div className="space-y-2">
+              <Label htmlFor="add_full_name">Full Name</Label>
+              <Input
+                id="add_full_name"
+                value={addFormData.full_name}
+                onChange={(e) =>
+                  setAddFormData({ ...addFormData, full_name: e.target.value })
+                }
+                placeholder="John Doe"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="add_role">Role</Label>
+              <Select
+                value={addFormData.role}
+                onValueChange={(value) =>
+                  setAddFormData({ ...addFormData, role: value as UserRole })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="business_analyst">Business Analyst</SelectItem>
+                  <SelectItem value="promaster">Promaster</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={() => setIsAddDialogOpen(false)}>
-              Done
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAddDialogOpen(false);
+                resetAddForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddUser}
+              className="bg-nintex-orange hover:bg-nintex-orange-hover"
+            >
+              Create User
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -356,9 +445,9 @@ export default function Users() {
                 <Label htmlFor="edit_full_name">Full Name</Label>
                 <Input
                   id="edit_full_name"
-                  value={formData.full_name}
+                  value={editFormData.full_name}
                   onChange={(e) =>
-                    setFormData({ ...formData, full_name: e.target.value })
+                    setEditFormData({ ...editFormData, full_name: e.target.value })
                   }
                   placeholder="John Doe"
                 />
@@ -366,9 +455,9 @@ export default function Users() {
               <div className="space-y-2">
                 <Label htmlFor="edit_role">Role</Label>
                 <Select
-                  value={formData.role}
+                  value={editFormData.role}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, role: value as UserRole })
+                    setEditFormData({ ...editFormData, role: value as UserRole })
                   }
                 >
                   <SelectTrigger>
