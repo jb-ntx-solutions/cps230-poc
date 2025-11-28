@@ -314,18 +314,18 @@ SECURITY DEFINER
 SET search_path = public
 LANGUAGE plpgsql AS $$
 DECLARE
-    email_domain TEXT;
+    user_email_domain TEXT;
     existing_account_id UUID;
     new_account_id UUID;
     is_first BOOLEAN;
 BEGIN
     -- Extract domain from email (everything after @)
-    email_domain := LOWER(SPLIT_PART(user_email, '@', 2));
+    user_email_domain := LOWER(SPLIT_PART(user_email, '@', 2));
 
     -- Check if account exists for this domain
     SELECT id INTO existing_account_id
     FROM public.accounts
-    WHERE accounts.email_domain = email_domain;
+    WHERE accounts.email_domain = user_email_domain;
 
     IF existing_account_id IS NOT NULL THEN
         -- Account exists, user is not first
@@ -335,8 +335,8 @@ BEGIN
         -- If no account name provided, use domain as default
         INSERT INTO public.accounts (account_name, email_domain)
         VALUES (
-            COALESCE(account_name_param, email_domain),
-            email_domain
+            COALESCE(account_name_param, user_email_domain),
+            user_email_domain
         )
         RETURNING id INTO new_account_id;
 
