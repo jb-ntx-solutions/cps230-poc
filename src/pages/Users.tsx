@@ -30,7 +30,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { UserProfile, UserRole } from '@/types/database';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, UserPlus, Copy, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Users() {
@@ -38,9 +38,11 @@ export default function Users() {
   const { toast } = useToast();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [copiedSignupUrl, setCopiedSignupUrl] = useState(false);
   const [formData, setFormData] = useState({
     full_name: '',
     role: 'user' as UserRole,
@@ -160,6 +162,17 @@ export default function Users() {
     });
   };
 
+  const handleCopySignupUrl = () => {
+    const signupUrl = `${window.location.origin}/signup`;
+    navigator.clipboard.writeText(signupUrl);
+    setCopiedSignupUrl(true);
+    setTimeout(() => setCopiedSignupUrl(false), 2000);
+    toast({
+      title: 'Copied!',
+      description: 'Signup URL copied to clipboard',
+    });
+  };
+
   const getRoleLabel = (role: UserRole) => {
     switch (role) {
       case 'promaster':
@@ -180,9 +193,18 @@ export default function Users() {
           <div>
             <h2 className="text-2xl font-bold">User Management</h2>
             <p className="text-muted-foreground">
-              View and manage user roles. New users can sign up using the registration page.
+              View and manage user roles
             </p>
           </div>
+          {isPromaster && (
+            <Button
+              onClick={() => setIsAddDialogOpen(true)}
+              className="bg-nintex-orange hover:bg-nintex-orange-hover"
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add User
+            </Button>
+          )}
         </div>
 
         <Card>
@@ -251,6 +273,69 @@ export default function Users() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Add User Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Add New User</DialogTitle>
+            <DialogDescription>
+              Invite a new user to join your account
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm">How to add a new user:</h4>
+              <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+                <li>Share the signup URL below with the new user</li>
+                <li>They will create their account using their company email</li>
+                <li>Users with the same email domain will automatically join your account</li>
+                <li>After they sign up, you can edit their role here</li>
+              </ol>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Signup URL</Label>
+              <div className="flex gap-2">
+                <Input
+                  readOnly
+                  value={`${window.location.origin}/signup`}
+                  className="font-mono text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleCopySignupUrl}
+                >
+                  {copiedSignupUrl ? (
+                    <Check className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-muted p-4 space-y-2">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Note
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                New users will be created with the "User" role by default. You can change their role after they sign up by using the Edit button in the users table.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsAddDialogOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit User Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
