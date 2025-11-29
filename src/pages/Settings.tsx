@@ -202,6 +202,11 @@ export default function Settings() {
                               <Loader2 className="h-3 w-3 animate-spin" />
                               Sync in progress... You can navigate away, it will continue in the background.
                             </p>
+                            {latestSync.total_batches > 1 && (
+                              <p className="text-xs text-muted-foreground">
+                                Batch {latestSync.current_batch || 1} of {latestSync.total_batches}
+                              </p>
+                            )}
                             {latestSync.total_processes > 0 && (
                               <div className="space-y-1">
                                 <p className="text-sm text-muted-foreground">
