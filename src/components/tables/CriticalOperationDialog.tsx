@@ -159,14 +159,14 @@ export function CriticalOperationDialog({
             <div className="grid gap-2">
               <Label htmlFor="system_id">Associated System</Label>
               <Select
-                value={watch('system_id')}
-                onValueChange={(value) => setValue('system_id', value)}
+                value={watch('system_id') || undefined}
+                onValueChange={(value) => setValue('system_id', value === 'none' ? '' : value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a system (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
                   {systems.map((system) => (
                     <SelectItem key={system.id} value={system.id}>
                       {system.system_name}
@@ -179,14 +179,14 @@ export function CriticalOperationDialog({
             <div className="grid gap-2">
               <Label htmlFor="process_id">Associated Process</Label>
               <Select
-                value={watch('process_id')}
-                onValueChange={(value) => setValue('process_id', value)}
+                value={watch('process_id') || undefined}
+                onValueChange={(value) => setValue('process_id', value === 'none' ? '' : value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a process (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
                   {processes.map((process) => (
                     <SelectItem key={process.id} value={process.id}>
                       {process.process_name}
