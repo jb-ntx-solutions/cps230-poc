@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { useSettings, useUpdateSetting, useSyncProcessManager, useSyncHistory, useLatestSync } from '@/hooks/useSettings';
+import { useSettings, useUpdateSetting, useSyncProcessManager, useSyncHistory, useLatestSync, useCancelSync } from '@/hooks/useSettings';
 import { toast } from 'sonner';
 import { Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
 
@@ -13,6 +13,7 @@ export default function Settings() {
   const { data: settings = [], isLoading } = useSettings(['pm_site_url', 'pm_username', 'pm_password', 'pm_tenant_id']);
   const updateSettings = useUpdateSetting();
   const syncPM = useSyncProcessManager();
+  const cancelSync = useCancelSync();
   const { data: latestSync } = useLatestSync();
 
   // Poll sync history when there's an active sync
@@ -58,12 +59,26 @@ export default function Settings() {
     }
   };
 
+  const handleCancelSync = async () => {
+    if (!latestSync?.id) return;
+
+    try {
+      await cancelSync.mutateAsync(latestSync.id);
+      toast.success('Sync cancelled');
+    } catch (error: any) {
+      toast.error(`Failed to cancel sync: ${error?.message || 'Unknown error'}`);
+      console.error(error);
+    }
+  };
+
   const getSyncStatusIcon = (status: string) => {
     switch (status) {
       case 'success':
         return <CheckCircle2 className="h-4 w-4 text-green-600" />;
       case 'failed':
         return <XCircle className="h-4 w-4 text-red-600" />;
+      case 'cancelled':
+        return <XCircle className="h-4 w-4 text-orange-600" />;
       case 'in_progress':
         return <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />;
       default:
@@ -171,12 +186,38 @@ export default function Settings() {
                             {(syncPM.isPending || isSyncing) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             {isSyncing ? 'Syncing...' : 'Sync Now'}
                           </Button>
+                          {isSyncing && (
+                            <Button
+                              variant="destructive"
+                              onClick={handleCancelSync}
+                              disabled={cancelSync.isPending}
+                            >
+                              Cancel Sync
+                            </Button>
+                          )}
                         </div>
-                        {isSyncing && (
-                          <p className="text-sm text-blue-600 flex items-center gap-2">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            Sync in progress... You can navigate away, it will continue in the background.
-                          </p>
+                        {isSyncing && latestSync && (
+                          <div className="space-y-2">
+                            <p className="text-sm text-blue-600 flex items-center gap-2">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Sync in progress... You can navigate away, it will continue in the background.
+                            </p>
+                            {latestSync.total_processes > 0 && (
+                              <div className="space-y-1">
+                                <p className="text-sm text-muted-foreground">
+                                  Processed {latestSync.processed_count || 0} of {latestSync.total_processes} processes
+                                </p>
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div
+                                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                    style={{
+                                      width: `${((latestSync.processed_count || 0) / latestSync.total_processes) * 100}%`
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                     </>

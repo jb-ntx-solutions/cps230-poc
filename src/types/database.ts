@@ -274,6 +274,8 @@ export interface Database {
           started_at: string
           completed_at: string | null
           account_id: string | null
+          total_processes: number
+          processed_count: number
         }
         Insert: {
           id?: string
@@ -285,6 +287,8 @@ export interface Database {
           started_at?: string
           completed_at?: string | null
           account_id?: string | null
+          total_processes?: number
+          processed_count?: number
         }
         Update: {
           id?: string
@@ -296,6 +300,8 @@ export interface Database {
           started_at?: string
           completed_at?: string | null
           account_id?: string | null
+          total_processes?: number
+          processed_count?: number
         }
       }
     }
