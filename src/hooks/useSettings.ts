@@ -97,7 +97,7 @@ export function useSyncProcessManager() {
   });
 }
 
-export function useSyncHistory() {
+export function useSyncHistory(refetchInterval?: number) {
   return useQuery({
     queryKey: ['sync-history'],
     queryFn: async () => {
@@ -110,5 +110,24 @@ export function useSyncHistory() {
       if (error) throw error;
       return data;
     },
+    refetchInterval, // Auto-refetch at specified interval
+  });
+}
+
+export function useLatestSync() {
+  return useQuery({
+    queryKey: ['latest-sync'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sync_history')
+        .select('*')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error; // Ignore "no rows" error
+      return data;
+    },
+    refetchInterval: 2000, // Poll every 2 seconds
   });
 }
