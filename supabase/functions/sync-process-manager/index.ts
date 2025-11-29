@@ -6,7 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const BATCH_SIZE = 150 // Process 150 processes per batch to avoid timeout
+const BATCH_SIZE = 100 // Process 100 processes per batch to avoid timeout
+const MAX_EXECUTION_TIME = 8 * 60 * 1000 // 8 minutes max (leave 2 min buffer before 10min timeout)
 
 interface ProcessManagerConfig {
   siteUrl: string
@@ -286,6 +287,8 @@ serve(async (req) => {
     // Start the sync process asynchronously (don't await)
     // This allows us to return immediately to the client
     (async () => {
+      const startTime = Date.now()
+
       try {
         // Authenticate with Process Manager
         const bearerToken = await authenticateProcessManager(config)
@@ -323,6 +326,22 @@ serve(async (req) => {
       const totalBatches = Math.ceil(allProcesses.length / BATCH_SIZE)
 
       for (let batchNum = 1; batchNum <= totalBatches; batchNum++) {
+        // Check if we're approaching timeout (8 minutes)
+        const elapsedTime = Date.now() - startTime
+        if (elapsedTime > MAX_EXECUTION_TIME) {
+          console.log(`Approaching timeout at ${elapsedTime}ms. Exiting gracefully at batch ${batchNum}/${totalBatches}`)
+          await supabaseAdmin
+            .from('sync_history')
+            .update({
+              status: 'failed',
+              error_message: `Timeout after processing ${totalProcessedCount} of ${allProcesses.length} processes. Completed ${batchNum - 1} of ${totalBatches} batches.`,
+              completed_at: new Date().toISOString(),
+              records_synced: processesProcessed,
+            })
+            .eq('id', syncRecord.id)
+          return
+        }
+
         const startIdx = (batchNum - 1) * BATCH_SIZE
         const endIdx = Math.min(startIdx + BATCH_SIZE, allProcesses.length)
         const batchProcesses = allProcesses.slice(startIdx, endIdx)
