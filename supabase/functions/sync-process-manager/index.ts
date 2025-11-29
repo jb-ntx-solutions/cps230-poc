@@ -70,6 +70,48 @@ interface ProcessDetailResponse {
   }
 }
 
+interface SearchAuthResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
+}
+
+interface SearchResult {
+  Name: string
+  EntityType: string
+  ProcessUniqueId: string
+  HighLights?: {
+    Activities?: string[]
+    Tasks?: string[]
+    LeanTags?: string[]
+    ProcessTags?: string[]
+  }
+}
+
+interface SearchResponse {
+  success: boolean
+  response: SearchResult[]
+  paging: {
+    TotalItemCount: number
+    LastItemOnPage: number
+    IsLastPage: boolean
+    PageNumber: number
+  }
+}
+
+// Map site URL to search endpoint region
+function getSearchEndpoint(siteUrl: string): string {
+  const regionMap: Record<string, string> = {
+    'demo.promapp.com': 'dmo-wus-sch.promapp.io',
+    'us.promapp.com': 'prd-wus-sch.promapp.io',
+    'ca.promapp.com': 'prd-cac-sch.promapp.io',
+    'eu.promapp.com': 'prd-neu-sch.promapp.io',
+    'au.promapp.com': 'prd-aus-sch.promapp.io',
+  }
+
+  return regionMap[siteUrl] || 'prd-wus-sch.promapp.io' // Default to US
+}
+
 // Authenticate with Process Manager and get bearer token
 async function authenticateProcessManager(config: ProcessManagerConfig): Promise<string> {
   const authUrl = `https://${config.siteUrl}/${config.tenantId}/oauth2/token`
@@ -94,6 +136,88 @@ async function authenticateProcessManager(config: ProcessManagerConfig): Promise
 
   const data: ProcessManagerAuthResponse = await response.json()
   return data.access_token
+}
+
+// Get Search Service token
+async function getSearchToken(config: ProcessManagerConfig, siteToken: string): Promise<string> {
+  const searchTokenUrl = `https://${config.siteUrl}/search/GetSearchServiceToken`
+
+  const response = await fetch(searchTokenUrl, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${siteToken}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to get search token: ${response.statusText}`)
+  }
+
+  const data: SearchAuthResponse = await response.json()
+  return data.access_token
+}
+
+// Search for processes with CPS230 tag using Search API
+async function searchCPS230Processes(
+  config: ProcessManagerConfig,
+  searchToken: string
+): Promise<string[]> {
+  const searchEndpoint = getSearchEndpoint(config.siteUrl)
+  const searchUrl = `https://${searchEndpoint}/fullsearch?SearchCriteria=CPS230&IncludedTypes=1&SearchMatchType=0`
+
+  let allProcessUniqueIds: string[] = []
+  let pageNumber = 1
+  let hasMore = true
+
+  while (hasMore) {
+    const pagedUrl = `${searchUrl}&PageNumber=${pageNumber}&PageSize=100`
+
+    const response = await fetch(pagedUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${searchToken}`,
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Search API failed: ${response.statusText}`)
+    }
+
+    const data: SearchResponse = await response.json()
+
+    if (!data.success) {
+      throw new Error('Search API returned unsuccessful response')
+    }
+
+    // Filter results that have CPS230 in highlights
+    const cps230Processes = data.response.filter(result => {
+      const highlights = result.HighLights
+      if (!highlights) return false
+
+      // Check all highlight types for CPS230
+      const allHighlights = [
+        ...(highlights.Activities || []),
+        ...(highlights.Tasks || []),
+        ...(highlights.LeanTags || []),
+        ...(highlights.ProcessTags || []),
+      ].join(' ')
+
+      return allHighlights.includes('CPS230') || allHighlights.includes('cps230')
+    })
+
+    // Extract unique IDs
+    const uniqueIds = cps230Processes
+      .map(p => p.ProcessUniqueId)
+      .filter(id => id) // Filter out any null/undefined
+
+    allProcessUniqueIds.push(...uniqueIds)
+
+    // Check if there are more pages
+    hasMore = !data.paging.IsLastPage
+    pageNumber++
+  }
+
+  return allProcessUniqueIds
 }
 
 // Fetch all processes from Process Manager (with pagination)
@@ -323,14 +447,21 @@ serve(async (req) => {
         // Authenticate with Process Manager
         const bearerToken = await authenticateProcessManager(config)
 
-        // Fetch all processes
-        const allProcesses = await fetchAllProcesses(config, bearerToken)
+        // Get search token
+        console.log('Getting search service token...')
+        const searchToken = await getSearchToken(config, bearerToken)
+
+        // Use Search API to find CPS230 processes (much faster than checking all processes!)
+        console.log('Searching for CPS230 processes using Search API...')
+        const cps230ProcessUniqueIds = await searchCPS230Processes(config, searchToken)
+
+        console.log(`Search API found ${cps230ProcessUniqueIds.length} processes with CPS230 tag`)
 
         // Update sync record with total count
         await supabaseAdmin
           .from('sync_history')
           .update({
-            total_processes: allProcesses.length,
+            total_processes: cps230ProcessUniqueIds.length,
             processed_count: 0,
           })
           .eq('id', syncRecord.id)
@@ -351,34 +482,34 @@ serve(async (req) => {
       )
 
       const syncedProcessIds = new Set<number>()
+      const examinedProcessIds = new Set<number>()
 
-      // Check for previous failed sync to resume from
-      const { data: previousSync } = await supabaseAdmin
-        .from('sync_history')
-        .select('processed_pm_ids, last_processed_index')
-        .eq('account_id', profile.account_id)
-        .eq('status', 'failed')
-        .order('started_at', { ascending: false })
-        .limit(1)
-        .single()
+      // If resuming, load already-processed unique IDs from sync record
+      const alreadyProcessedUniqueIds = new Set<string>(syncRecord.processed_pm_ids?.map(String) || [])
 
-      // If resuming, add already-processed IDs to our tracking
-      const alreadyProcessedPmIds = new Set<number>(previousSync?.processed_pm_ids || [])
-      let startFromIndex = previousSync?.last_processed_index || 0
-
-      if (alreadyProcessedPmIds.size > 0) {
-        console.log(`Resuming from previous sync. Skipping ${alreadyProcessedPmIds.size} already-processed processes.`)
-        // Add to syncedProcessIds so they don't get deleted
-        alreadyProcessedPmIds.forEach(id => syncedProcessIds.add(id))
+      if (alreadyProcessedUniqueIds.size > 0) {
+        console.log(`Resuming sync ${syncRecord.id}. Skipping ${alreadyProcessedUniqueIds.size} already-processed processes.`)
+        // Add to tracking sets
+        alreadyProcessedUniqueIds.forEach(id => {
+          const numId = parseInt(id)
+          if (!isNaN(numId)) {
+            syncedProcessIds.add(numId)
+          }
+        })
       }
 
+      // Filter out already-processed unique IDs
+      const processesToSync = cps230ProcessUniqueIds.filter(uid => !alreadyProcessedUniqueIds.has(uid))
+
+      console.log(`${processesToSync.length} processes to sync (${cps230ProcessUniqueIds.length} total, ${alreadyProcessedUniqueIds.size} already processed)`)
+
       // Process in batches to avoid timeout
-      const totalBatches = Math.ceil(allProcesses.length / BATCH_SIZE)
+      const totalBatches = Math.ceil(processesToSync.length / BATCH_SIZE)
 
       for (let batchNum = 1; batchNum <= totalBatches; batchNum++) {
         const startIdx = (batchNum - 1) * BATCH_SIZE
-        const endIdx = Math.min(startIdx + BATCH_SIZE, allProcesses.length)
-        const batchProcesses = allProcesses.slice(startIdx, endIdx)
+        const endIdx = Math.min(startIdx + BATCH_SIZE, processesToSync.length)
+        const batchProcessUniqueIds = processesToSync.slice(startIdx, endIdx)
 
         // Check if we're approaching timeout (8 minutes)
         const elapsedTime = Date.now() - startTime
@@ -390,19 +521,20 @@ serve(async (req) => {
             .from('sync_history')
             .update({
               status: 'failed',
-              error_message: `Timeout after processing ${totalProcessedCount} of ${allProcesses.length} processes. Completed ${batchNum - 1} of ${totalBatches} batches. Will auto-retry.`,
+              error_message: `Timeout after processing ${processesProcessed} of ${processesToSync.length} CPS230 processes. Completed ${batchNum - 1} of ${totalBatches} batches. Click Sync Now to resume.`,
               completed_at: new Date().toISOString(),
               records_synced: processesProcessed,
               last_processed_index: startIdx,
               processed_pm_ids: Array.from(syncedProcessIds),
+              examined_pm_ids: Array.from(examinedProcessIds),
             })
             .eq('id', syncRecord.id)
 
-          console.log(`Progress saved. Next sync will resume from process ${startIdx + 1}.`)
+          console.log(`Progress saved. Processed ${processesProcessed} CPS230 processes. Next sync will resume from batch ${batchNum}.`)
           return
         }
 
-        console.log(`Processing batch ${batchNum}/${totalBatches} (processes ${startIdx + 1}-${endIdx} of ${allProcesses.length})`)
+        console.log(`Processing batch ${batchNum}/${totalBatches} (processes ${startIdx + 1}-${endIdx} of ${processesToSync.length})`)
 
         // Update batch info
         await supabaseAdmin
@@ -414,19 +546,10 @@ serve(async (req) => {
           })
           .eq('id', syncRecord.id)
 
-        // Track PM IDs processed in this batch for incremental save
-        const batchProcessedPmIds: number[] = []
-
-        // Process each process in this batch
-        for (let i = 0; i < batchProcesses.length; i++) {
-          const process = batchProcesses[i]
+        // Process each process in this batch by unique ID
+        for (let i = 0; i < batchProcessUniqueIds.length; i++) {
+          const processUniqueId = batchProcessUniqueIds[i]
           const globalIndex = startIdx + i
-
-          // Skip if already processed in a previous run
-          if (alreadyProcessedPmIds.has(process.processId)) {
-            totalProcessedCount++
-            continue
-          }
 
           // Check if sync was cancelled every 10 processes
           if (i % 10 === 0) {
@@ -437,7 +560,7 @@ serve(async (req) => {
               .single()
 
             if (currentSync?.status === 'cancelled') {
-              console.log(`Sync cancelled by user at process ${globalIndex}/${allProcesses.length}`)
+              console.log(`Sync cancelled by user at process ${globalIndex}/${processesToSync.length}`)
               await supabaseAdmin
                 .from('sync_history')
                 .update({
@@ -445,6 +568,7 @@ serve(async (req) => {
                   records_synced: processesProcessed,
                   last_processed_index: globalIndex,
                   processed_pm_ids: Array.from(syncedProcessIds),
+                  examined_pm_ids: Array.from(examinedProcessIds),
                 })
                 .eq('id', syncRecord.id)
               return // Exit the sync process
@@ -453,15 +577,15 @@ serve(async (req) => {
 
           let processDetail: ProcessDetailResponse
           try {
-            // Fetch full process details
-            processDetail = await fetchProcessDetails(config, bearerToken, process.processUniqueId)
+            // Fetch full process details by unique ID
+            processDetail = await fetchProcessDetails(config, bearerToken, processUniqueId)
 
             // Increment total processed count
             totalProcessedCount++
 
             // Update progress every 10 processes
-            if (totalProcessedCount % 10 === 0 || totalProcessedCount === allProcesses.length) {
-              console.log(`Progress: ${totalProcessedCount}/${allProcesses.length} processes examined, ${processesProcessed} with CPS230 tag`)
+            if (totalProcessedCount % 10 === 0 || totalProcessedCount === processesToSync.length) {
+              console.log(`Progress: ${totalProcessedCount}/${processesToSync.length} CPS230 processes synced`)
               await supabaseAdmin
                 .from('sync_history')
                 .update({
@@ -470,20 +594,15 @@ serve(async (req) => {
                 .eq('id', syncRecord.id)
             }
 
-            // Only process if it has CPS230 tag
-            if (!hasCPS230Tag(processDetail)) {
-              // Still track it as examined even if not CPS230
-              batchProcessedPmIds.push(process.processId)
-              continue
-            }
+            // All processes from search have CPS230 tag, no need to check again
           } catch (error: any) {
-            console.error(`Failed to fetch process ${globalIndex}/${allProcesses.length} (${process.processName}):`, error?.message || error)
+            console.error(`Failed to fetch process ${globalIndex}/${processesToSync.length} (${processUniqueId}):`, error?.message || error)
             totalProcessedCount++
             continue
           }
 
         syncedProcessIds.add(processDetail.processJson.Id)
-        batchProcessedPmIds.push(process.processId)
+        examinedProcessIds.add(processDetail.processJson.Id)
 
         // Extract and save systems
         const systemTags = extractSystemTags(processDetail)
@@ -579,11 +698,12 @@ serve(async (req) => {
           .update({
             last_processed_index: endIdx,
             processed_pm_ids: Array.from(syncedProcessIds),
+            examined_pm_ids: Array.from(examinedProcessIds),
             records_synced: processesProcessed,
           })
           .eq('id', syncRecord.id)
 
-        console.log(`Batch ${batchNum}/${totalBatches} saved. Processed ${batchProcessedPmIds.length} new processes in this batch.`)
+        console.log(`Batch ${batchNum}/${totalBatches} saved. Processed ${processesProcessed} CPS230 processes.`)
       }
 
       // Clean up processes that no longer have CPS230 tag or were deleted

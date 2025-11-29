@@ -281,6 +281,7 @@ export interface Database {
           batch_size: number
           last_processed_index: number
           processed_pm_ids: number[]
+          examined_pm_ids: number[]
         }
         Insert: {
           id?: string
@@ -299,6 +300,7 @@ export interface Database {
           batch_size?: number
           last_processed_index?: number
           processed_pm_ids?: number[]
+          examined_pm_ids?: number[]
         }
         Update: {
           id?: string
@@ -317,6 +319,7 @@ export interface Database {
           batch_size?: number
           last_processed_index?: number
           processed_pm_ids?: number[]
+          examined_pm_ids?: number[]
         }
       }
     }
