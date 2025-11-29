@@ -318,41 +318,57 @@ serve(async (req) => {
       const syncedProcessIds = new Set<number>()
 
       // Process each process
-      for (const process of allProcesses) {
-        // Check if sync was cancelled - poll the database every iteration
-        const { data: currentSync } = await supabaseAdmin
-          .from('sync_history')
-          .select('status')
-          .eq('id', syncRecord.id)
-          .single()
+      for (let i = 0; i < allProcesses.length; i++) {
+        const process = allProcesses[i]
 
-        if (currentSync?.status === 'cancelled') {
-          console.log('Sync cancelled by user')
-          await supabaseAdmin
+        // Check if sync was cancelled every 5 processes (more responsive than 10)
+        // Also check on first iteration
+        if (i === 0 || i % 5 === 0) {
+          const { data: currentSync } = await supabaseAdmin
             .from('sync_history')
-            .update({
-              completed_at: new Date().toISOString(),
-            })
+            .select('status')
             .eq('id', syncRecord.id)
-          return // Exit the sync process
+            .single()
+
+          if (currentSync?.status === 'cancelled') {
+            console.log(`Sync cancelled by user at process ${i}/${allProcesses.length}`)
+            await supabaseAdmin
+              .from('sync_history')
+              .update({
+                completed_at: new Date().toISOString(),
+                records_synced: processesProcessed,
+              })
+              .eq('id', syncRecord.id)
+            return // Exit the sync process
+          }
         }
 
-        // Fetch full process details
-        const processDetail = await fetchProcessDetails(config, bearerToken, process.processUniqueId)
+        let processDetail: ProcessDetailResponse
+        try {
+          // Fetch full process details
+          processDetail = await fetchProcessDetails(config, bearerToken, process.processUniqueId)
 
-        // Increment total processed count (includes processes without CPS230 tag)
-        totalProcessedCount++
+          // Increment total processed count (includes processes without CPS230 tag)
+          totalProcessedCount++
 
-        // Update progress every process
-        await supabaseAdmin
-          .from('sync_history')
-          .update({
-            processed_count: totalProcessedCount,
-          })
-          .eq('id', syncRecord.id)
+          // Update progress every 5 processes to reduce database load but keep UI responsive
+          if (totalProcessedCount % 5 === 0 || totalProcessedCount === allProcesses.length) {
+            await supabaseAdmin
+              .from('sync_history')
+              .update({
+                processed_count: totalProcessedCount,
+              })
+              .eq('id', syncRecord.id)
+          }
 
-        // Only process if it has CPS230 tag
-        if (!hasCPS230Tag(processDetail)) {
+          // Only process if it has CPS230 tag
+          if (!hasCPS230Tag(processDetail)) {
+            continue
+          }
+        } catch (error: any) {
+          console.error(`Failed to process ${process.processName}:`, error)
+          // Continue with next process instead of failing entire sync
+          totalProcessedCount++
           continue
         }
 
@@ -439,8 +455,8 @@ serve(async (req) => {
           processesProcessed++
         }
 
-        // Add small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100))
+        // Add small delay to avoid rate limiting (reduced from 100ms to 50ms)
+        await new Promise(resolve => setTimeout(resolve, 50))
       }
 
       // Clean up processes that no longer have CPS230 tag or were deleted
@@ -505,11 +521,11 @@ serve(async (req) => {
         status: 200,
       }
     )
-  } catch (error) {
+  } catch (error: any) {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message,
+        error: error?.message || 'Unknown error',
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
