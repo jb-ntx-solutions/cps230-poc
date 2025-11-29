@@ -268,20 +268,50 @@ serve(async (req) => {
       tenantId: settingsData.find(s => s.key === 'pm_tenant_id')?.value as string,
     }
 
-    // Create sync history record
-    const { data: syncRecord } = await supabaseAdmin
+    // Check if there's a failed sync that should be resumed
+    const { data: failedSync } = await supabaseAdmin
       .from('sync_history')
-      .insert({
-        sync_type: 'full',
-        status: 'in_progress',
-        initiated_by: profile.email,
-        account_id: profile.account_id,
-      })
-      .select()
+      .select('*')
+      .eq('account_id', profile.account_id)
+      .eq('status', 'failed')
+      .order('started_at', { ascending: false })
+      .limit(1)
       .single()
 
-    if (!syncRecord) {
-      throw new Error('Failed to create sync history record')
+    let syncRecord
+    let isResume = false
+
+    if (failedSync && failedSync.processed_pm_ids && failedSync.processed_pm_ids.length > 0) {
+      // Resume the failed sync
+      console.log(`Resuming failed sync ${failedSync.id} with ${failedSync.processed_pm_ids.length} already-processed processes`)
+      syncRecord = failedSync
+      isResume = true
+
+      // Update status back to in_progress
+      await supabaseAdmin
+        .from('sync_history')
+        .update({
+          status: 'in_progress',
+          error_message: null,
+        })
+        .eq('id', syncRecord.id)
+    } else {
+      // Create new sync history record
+      const { data: newSync } = await supabaseAdmin
+        .from('sync_history')
+        .insert({
+          sync_type: 'full',
+          status: 'in_progress',
+          initiated_by: profile.email,
+          account_id: profile.account_id,
+        })
+        .select()
+        .single()
+
+      if (!newSync) {
+        throw new Error('Failed to create sync history record')
+      }
+      syncRecord = newSync
     }
 
     // Start the sync process asynchronously (don't await)
@@ -322,29 +352,55 @@ serve(async (req) => {
 
       const syncedProcessIds = new Set<number>()
 
+      // Check for previous failed sync to resume from
+      const { data: previousSync } = await supabaseAdmin
+        .from('sync_history')
+        .select('processed_pm_ids, last_processed_index')
+        .eq('account_id', profile.account_id)
+        .eq('status', 'failed')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      // If resuming, add already-processed IDs to our tracking
+      const alreadyProcessedPmIds = new Set<number>(previousSync?.processed_pm_ids || [])
+      let startFromIndex = previousSync?.last_processed_index || 0
+
+      if (alreadyProcessedPmIds.size > 0) {
+        console.log(`Resuming from previous sync. Skipping ${alreadyProcessedPmIds.size} already-processed processes.`)
+        // Add to syncedProcessIds so they don't get deleted
+        alreadyProcessedPmIds.forEach(id => syncedProcessIds.add(id))
+      }
+
       // Process in batches to avoid timeout
       const totalBatches = Math.ceil(allProcesses.length / BATCH_SIZE)
 
       for (let batchNum = 1; batchNum <= totalBatches; batchNum++) {
+        const startIdx = (batchNum - 1) * BATCH_SIZE
+        const endIdx = Math.min(startIdx + BATCH_SIZE, allProcesses.length)
+        const batchProcesses = allProcesses.slice(startIdx, endIdx)
+
         // Check if we're approaching timeout (8 minutes)
         const elapsedTime = Date.now() - startTime
         if (elapsedTime > MAX_EXECUTION_TIME) {
-          console.log(`Approaching timeout at ${elapsedTime}ms. Exiting gracefully at batch ${batchNum}/${totalBatches}`)
+          console.log(`Approaching timeout at ${elapsedTime}ms. Saving progress and will auto-retry...`)
+
+          // Save current progress
           await supabaseAdmin
             .from('sync_history')
             .update({
               status: 'failed',
-              error_message: `Timeout after processing ${totalProcessedCount} of ${allProcesses.length} processes. Completed ${batchNum - 1} of ${totalBatches} batches.`,
+              error_message: `Timeout after processing ${totalProcessedCount} of ${allProcesses.length} processes. Completed ${batchNum - 1} of ${totalBatches} batches. Will auto-retry.`,
               completed_at: new Date().toISOString(),
               records_synced: processesProcessed,
+              last_processed_index: startIdx,
+              processed_pm_ids: Array.from(syncedProcessIds),
             })
             .eq('id', syncRecord.id)
+
+          console.log(`Progress saved. Next sync will resume from process ${startIdx + 1}.`)
           return
         }
-
-        const startIdx = (batchNum - 1) * BATCH_SIZE
-        const endIdx = Math.min(startIdx + BATCH_SIZE, allProcesses.length)
-        const batchProcesses = allProcesses.slice(startIdx, endIdx)
 
         console.log(`Processing batch ${batchNum}/${totalBatches} (processes ${startIdx + 1}-${endIdx} of ${allProcesses.length})`)
 
@@ -358,10 +414,19 @@ serve(async (req) => {
           })
           .eq('id', syncRecord.id)
 
+        // Track PM IDs processed in this batch for incremental save
+        const batchProcessedPmIds: number[] = []
+
         // Process each process in this batch
         for (let i = 0; i < batchProcesses.length; i++) {
           const process = batchProcesses[i]
           const globalIndex = startIdx + i
+
+          // Skip if already processed in a previous run
+          if (alreadyProcessedPmIds.has(process.processId)) {
+            totalProcessedCount++
+            continue
+          }
 
           // Check if sync was cancelled every 10 processes
           if (i % 10 === 0) {
@@ -378,6 +443,8 @@ serve(async (req) => {
                 .update({
                   completed_at: new Date().toISOString(),
                   records_synced: processesProcessed,
+                  last_processed_index: globalIndex,
+                  processed_pm_ids: Array.from(syncedProcessIds),
                 })
                 .eq('id', syncRecord.id)
               return // Exit the sync process
@@ -405,6 +472,8 @@ serve(async (req) => {
 
             // Only process if it has CPS230 tag
             if (!hasCPS230Tag(processDetail)) {
+              // Still track it as examined even if not CPS230
+              batchProcessedPmIds.push(process.processId)
               continue
             }
           } catch (error: any) {
@@ -414,6 +483,7 @@ serve(async (req) => {
           }
 
         syncedProcessIds.add(processDetail.processJson.Id)
+        batchProcessedPmIds.push(process.processId)
 
         // Extract and save systems
         const systemTags = extractSystemTags(processDetail)
@@ -500,7 +570,20 @@ serve(async (req) => {
         await new Promise(resolve => setTimeout(resolve, 50))
         }
 
-        console.log(`Completed batch ${batchNum}/${totalBatches}`)
+        // INCREMENTAL SAVE: Save progress after each batch completes
+        console.log(`Completed batch ${batchNum}/${totalBatches}. Saving progress...`)
+
+        // Update sync history with current progress and processed IDs
+        await supabaseAdmin
+          .from('sync_history')
+          .update({
+            last_processed_index: endIdx,
+            processed_pm_ids: Array.from(syncedProcessIds),
+            records_synced: processesProcessed,
+          })
+          .eq('id', syncRecord.id)
+
+        console.log(`Batch ${batchNum}/${totalBatches} saved. Processed ${batchProcessedPmIds.length} new processes in this batch.`)
       }
 
       // Clean up processes that no longer have CPS230 tag or were deleted
