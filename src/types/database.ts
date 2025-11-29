@@ -276,6 +276,9 @@ export interface Database {
           account_id: string | null
           total_processes: number
           processed_count: number
+          current_batch: number
+          total_batches: number
+          batch_size: number
         }
         Insert: {
           id?: string
@@ -289,6 +292,9 @@ export interface Database {
           account_id?: string | null
           total_processes?: number
           processed_count?: number
+          current_batch?: number
+          total_batches?: number
+          batch_size?: number
         }
         Update: {
           id?: string
@@ -302,6 +308,9 @@ export interface Database {
           account_id?: string | null
           total_processes?: number
           processed_count?: number
+          current_batch?: number
+          total_batches?: number
+          batch_size?: number
         }
       }
     }

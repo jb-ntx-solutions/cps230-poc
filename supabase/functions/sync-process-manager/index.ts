@@ -6,6 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const BATCH_SIZE = 150 // Process 150 processes per batch to avoid timeout
+
 interface ProcessManagerConfig {
   siteUrl: string
   username: string
@@ -317,60 +319,80 @@ serve(async (req) => {
 
       const syncedProcessIds = new Set<number>()
 
-      // Process each process
-      for (let i = 0; i < allProcesses.length; i++) {
-        const process = allProcesses[i]
+      // Process in batches to avoid timeout
+      const totalBatches = Math.ceil(allProcesses.length / BATCH_SIZE)
 
-        // Check if sync was cancelled every 5 processes (more responsive than 10)
-        // Also check on first iteration
-        if (i === 0 || i % 5 === 0) {
-          const { data: currentSync } = await supabaseAdmin
-            .from('sync_history')
-            .select('status')
-            .eq('id', syncRecord.id)
-            .single()
+      for (let batchNum = 1; batchNum <= totalBatches; batchNum++) {
+        const startIdx = (batchNum - 1) * BATCH_SIZE
+        const endIdx = Math.min(startIdx + BATCH_SIZE, allProcesses.length)
+        const batchProcesses = allProcesses.slice(startIdx, endIdx)
 
-          if (currentSync?.status === 'cancelled') {
-            console.log(`Sync cancelled by user at process ${i}/${allProcesses.length}`)
-            await supabaseAdmin
+        console.log(`Processing batch ${batchNum}/${totalBatches} (processes ${startIdx + 1}-${endIdx} of ${allProcesses.length})`)
+
+        // Update batch info
+        await supabaseAdmin
+          .from('sync_history')
+          .update({
+            current_batch: batchNum,
+            total_batches: totalBatches,
+            batch_size: BATCH_SIZE,
+          })
+          .eq('id', syncRecord.id)
+
+        // Process each process in this batch
+        for (let i = 0; i < batchProcesses.length; i++) {
+          const process = batchProcesses[i]
+          const globalIndex = startIdx + i
+
+          // Check if sync was cancelled every 10 processes
+          if (i % 10 === 0) {
+            const { data: currentSync } = await supabaseAdmin
               .from('sync_history')
-              .update({
-                completed_at: new Date().toISOString(),
-                records_synced: processesProcessed,
-              })
+              .select('status')
               .eq('id', syncRecord.id)
-            return // Exit the sync process
-          }
-        }
+              .single()
 
-        let processDetail: ProcessDetailResponse
-        try {
-          // Fetch full process details
-          processDetail = await fetchProcessDetails(config, bearerToken, process.processUniqueId)
-
-          // Increment total processed count (includes processes without CPS230 tag)
-          totalProcessedCount++
-
-          // Update progress every 5 processes to reduce database load but keep UI responsive
-          if (totalProcessedCount % 5 === 0 || totalProcessedCount === allProcesses.length) {
-            await supabaseAdmin
-              .from('sync_history')
-              .update({
-                processed_count: totalProcessedCount,
-              })
-              .eq('id', syncRecord.id)
+            if (currentSync?.status === 'cancelled') {
+              console.log(`Sync cancelled by user at process ${globalIndex}/${allProcesses.length}`)
+              await supabaseAdmin
+                .from('sync_history')
+                .update({
+                  completed_at: new Date().toISOString(),
+                  records_synced: processesProcessed,
+                })
+                .eq('id', syncRecord.id)
+              return // Exit the sync process
+            }
           }
 
-          // Only process if it has CPS230 tag
-          if (!hasCPS230Tag(processDetail)) {
+          let processDetail: ProcessDetailResponse
+          try {
+            // Fetch full process details
+            processDetail = await fetchProcessDetails(config, bearerToken, process.processUniqueId)
+
+            // Increment total processed count
+            totalProcessedCount++
+
+            // Update progress every 10 processes
+            if (totalProcessedCount % 10 === 0 || totalProcessedCount === allProcesses.length) {
+              console.log(`Progress: ${totalProcessedCount}/${allProcesses.length} processes examined, ${processesProcessed} with CPS230 tag`)
+              await supabaseAdmin
+                .from('sync_history')
+                .update({
+                  processed_count: totalProcessedCount,
+                })
+                .eq('id', syncRecord.id)
+            }
+
+            // Only process if it has CPS230 tag
+            if (!hasCPS230Tag(processDetail)) {
+              continue
+            }
+          } catch (error: any) {
+            console.error(`Failed to fetch process ${globalIndex}/${allProcesses.length} (${process.processName}):`, error?.message || error)
+            totalProcessedCount++
             continue
           }
-        } catch (error: any) {
-          console.error(`Failed to process ${process.processName}:`, error)
-          // Continue with next process instead of failing entire sync
-          totalProcessedCount++
-          continue
-        }
 
         syncedProcessIds.add(processDetail.processJson.Id)
 
@@ -457,6 +479,9 @@ serve(async (req) => {
 
         // Add small delay to avoid rate limiting (reduced from 100ms to 50ms)
         await new Promise(resolve => setTimeout(resolve, 50))
+        }
+
+        console.log(`Completed batch ${batchNum}/${totalBatches}`)
       }
 
       // Clean up processes that no longer have CPS230 tag or were deleted
