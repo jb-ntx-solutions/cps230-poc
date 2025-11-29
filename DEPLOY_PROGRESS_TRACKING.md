@@ -8,7 +8,9 @@ This guide covers deploying the progress tracking and sync cancellation features
 ✅ **Cancel Sync**: Ability to stop a running sync job
 ✅ **Real-time Updates**: Progress updates every 2 seconds while sync is running
 
-## Step 1: Apply Database Migration (2 minutes)
+## Step 1: Apply Database Migrations (3 minutes)
+
+### Migration 1: Add Progress Fields
 
 1. **Open Supabase SQL Editor**:
    https://supabase.com/dashboard/project/rdqavrqfisyzwfqhckcp/sql/new
@@ -21,6 +23,21 @@ This guide covers deploying the progress tracking and sync cancellation features
    - Paste into the SQL Editor
    - Click **RUN**
    - Wait for "Success" message
+
+### Migration 2: Add RLS Policies for Cancellation
+
+1. **Open a new SQL query** (or clear the existing one)
+
+2. **Copy the RLS migration SQL**:
+   - Open: `supabase/migrations/20250129_add_sync_history_rls.sql`
+   - Select all (Cmd+A) and copy (Cmd+C)
+
+3. **Paste and run**:
+   - Paste into the SQL Editor
+   - Click **RUN**
+   - Wait for "Success" message
+
+   **Important**: This migration adds the necessary RLS policies for users to cancel their own syncs.
 
 ## Step 2: Redeploy Edge Function (3 minutes)
 
@@ -129,9 +146,35 @@ ADD COLUMN processed_count INTEGER DEFAULT 0;
 - Large PM sites (1000+ processes) may take 10-30 seconds to fetch all
 - Once `total_processes` is set, progress will start showing
 
-## Performance Notes
+## Performance Optimizations
 
-- Updating progress on **every** process adds ~10ms per process
-- For 500 processes: adds ~5 seconds total sync time
-- This is acceptable for the benefit of real-time progress tracking
-- Progress updates are fire-and-forget (don't block sync process)
+The Edge Function has been optimized for large datasets (1000+ processes):
+
+### Progress Updates
+- Updates every **5 processes** instead of every single process
+- Reduces database writes by 80%
+- For 1000 processes: ~200 progress updates vs 1000
+- Provides smooth, responsive progress tracking
+
+### Cancellation Checks
+- Checks for cancellation every **5 processes** instead of every iteration
+- Checks on first iteration for immediate responsiveness
+- Reduces database reads by 80% while maintaining quick cancellation
+- Cancellation detected within ~2-5 seconds
+
+### Error Handling
+- Individual process failures no longer halt entire sync
+- Failed processes are logged and skipped
+- Sync continues with remaining processes
+- Total processed count includes failed processes
+
+### Rate Limiting
+- 50ms delay between processes (reduced from 100ms)
+- Faster sync times while still respecting API limits
+- For 1000 processes: saves ~50 seconds
+
+### Expected Performance
+- **Small datasets** (1-100 processes): 1-2 minutes
+- **Medium datasets** (100-500 processes): 2-10 minutes
+- **Large datasets** (500-1000+ processes): 10-30 minutes
+- Progress bar updates smoothly throughout
