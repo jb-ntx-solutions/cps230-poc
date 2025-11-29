@@ -40,6 +40,7 @@ export interface Database {
           id: string
           process_name: string
           process_unique_id: string
+          pm_process_id: number | null
           owner_username: string | null
           input_processes: string[] | null
           output_processes: string[] | null
@@ -54,6 +55,7 @@ export interface Database {
           id?: string
           process_name: string
           process_unique_id: string
+          pm_process_id?: number | null
           owner_username?: string | null
           input_processes?: string[] | null
           output_processes?: string[] | null
@@ -68,6 +70,7 @@ export interface Database {
           id?: string
           process_name?: string
           process_unique_id?: string
+          pm_process_id?: number | null
           owner_username?: string | null
           input_processes?: string[] | null
           output_processes?: string[] | null
@@ -84,6 +87,7 @@ export interface Database {
           id: string
           system_name: string
           system_id: string
+          pm_tag_id: string | null
           description: string | null
           metadata: Json | null
           modified_by: string
@@ -95,6 +99,7 @@ export interface Database {
           id?: string
           system_name: string
           system_id: string
+          pm_tag_id?: string | null
           description?: string | null
           metadata?: Json | null
           modified_by: string
@@ -106,6 +111,7 @@ export interface Database {
           id?: string
           system_name?: string
           system_id?: string
+          pm_tag_id?: string | null
           description?: string | null
           metadata?: Json | null
           modified_by?: string
@@ -257,6 +263,41 @@ export interface Database {
           account_id?: string | null
         }
       }
+      sync_history: {
+        Row: {
+          id: string
+          sync_type: string
+          status: string
+          records_synced: number
+          error_message: string | null
+          initiated_by: string
+          started_at: string
+          completed_at: string | null
+          account_id: string | null
+        }
+        Insert: {
+          id?: string
+          sync_type: string
+          status: string
+          records_synced?: number
+          error_message?: string | null
+          initiated_by: string
+          started_at?: string
+          completed_at?: string | null
+          account_id?: string | null
+        }
+        Update: {
+          id?: string
+          sync_type?: string
+          status?: string
+          records_synced?: number
+          error_message?: string | null
+          initiated_by?: string
+          started_at?: string
+          completed_at?: string | null
+          account_id?: string | null
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -278,3 +319,4 @@ export type CriticalOperation = Database['public']['Tables']['critical_operation
 export type Control = Database['public']['Tables']['controls']['Row'];
 export type UserProfile = Database['public']['Tables']['user_profiles']['Row'];
 export type Setting = Database['public']['Tables']['settings']['Row'];
+export type SyncHistory = Database['public']['Tables']['sync_history']['Row'];

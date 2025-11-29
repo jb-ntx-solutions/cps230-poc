@@ -20,11 +20,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import { useProcesses, useDeleteProcess } from '@/hooks/useProcesses';
+import { useProcesses, useDeleteProcess, type ProcessWithSystems } from '@/hooks/useProcesses';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Process } from '@/types/database';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
 
 export function ProcessesTable() {
   const { data: processes = [], isLoading } = useProcesses();
@@ -32,11 +32,11 @@ export function ProcessesTable() {
   const { isBusinessAnalyst } = useAuth();
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedProcess, setSelectedProcess] = useState<Process | null>(null);
+  const [selectedProcess, setSelectedProcess] = useState<ProcessWithSystems | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [processToDelete, setProcessToDelete] = useState<Process | null>(null);
+  const [processToDelete, setProcessToDelete] = useState<ProcessWithSystems | null>(null);
 
-  const handleEdit = (process: Process) => {
+  const handleEdit = (process: ProcessWithSystems) => {
     setSelectedProcess(process);
     setDialogOpen(true);
   };
@@ -46,7 +46,7 @@ export function ProcessesTable() {
     setDialogOpen(true);
   };
 
-  const handleDeleteClick = (process: Process) => {
+  const handleDeleteClick = (process: ProcessWithSystems) => {
     setProcessToDelete(process);
     setDeleteDialogOpen(true);
   };
@@ -65,7 +65,7 @@ export function ProcessesTable() {
     }
   };
 
-  const columns: ColumnDef<Process>[] = [
+  const columns: ColumnDef<ProcessWithSystems>[] = [
     {
       accessorKey: 'process_name',
       header: 'Process Name',
@@ -89,6 +89,25 @@ export function ProcessesTable() {
         const owner = row.getValue('owner_username') as string | null;
         return (
           <div className="text-sm">{owner || <span className="text-muted-foreground">—</span>}</div>
+        );
+      },
+    },
+    {
+      accessorKey: 'systems',
+      header: 'Associated Systems',
+      cell: ({ row }) => {
+        const systems = row.original.systems || [];
+        if (systems.length === 0) {
+          return <span className="text-muted-foreground text-sm">—</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1">
+            {systems.map((system) => (
+              <Badge key={system.id} variant="secondary" className="text-xs">
+                {system.system_name}
+              </Badge>
+            ))}
+          </div>
         );
       },
     },
