@@ -210,29 +210,49 @@ serve(async (req) => {
 
     // Verify user is a Promaster
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
-    if (userError || !user) {
-      throw new Error('Unauthorized')
+    if (userError) {
+      console.error('Auth error:', userError)
+      throw new Error(`Authentication failed: ${userError.message}`)
+    }
+    if (!user) {
+      throw new Error('No authenticated user found')
     }
 
-    const { data: profile } = await supabaseClient
+    const { data: profile, error: profileError } = await supabaseClient
       .from('user_profiles')
       .select('role, account_id, email')
       .eq('user_id', user.id)
       .single()
 
-    if (!profile || profile.role !== 'promaster') {
+    if (profileError) {
+      console.error('Profile query error:', profileError)
+      throw new Error(`Failed to fetch user profile: ${profileError.message}`)
+    }
+
+    if (!profile) {
+      throw new Error('User profile not found')
+    }
+
+    if (profile.role !== 'promaster') {
       throw new Error('Only Promasters can sync Process Manager data')
     }
 
     // Get Process Manager configuration from settings
-    const { data: settingsData } = await supabaseClient
+    // Use OR condition to get settings that match account_id OR are null (for backwards compatibility)
+    const { data: settingsData, error: settingsError } = await supabaseClient
       .from('settings')
       .select('key, value')
       .in('key', ['pm_site_url', 'pm_username', 'pm_password', 'pm_tenant_id'])
-      .eq('account_id', profile.account_id)
+      .or(`account_id.eq.${profile.account_id},account_id.is.null`)
+
+    if (settingsError) {
+      console.error('Settings query error:', settingsError)
+      throw new Error(`Failed to fetch settings: ${settingsError.message}`)
+    }
 
     if (!settingsData || settingsData.length < 4) {
-      throw new Error('Process Manager configuration not found. Please configure in settings.')
+      console.error('Settings data:', settingsData)
+      throw new Error(`Process Manager configuration incomplete. Found ${settingsData?.length || 0} of 4 required settings. Please configure in settings.`)
     }
 
     const config: ProcessManagerConfig = {
