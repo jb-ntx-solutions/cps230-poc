@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "url": "https://mcp.supabase.com/mcp",
+      "env": {
+        "SUPABASE_URL": "https://rdqavrqfisyzwfqhckcp.supabase.co",
+        "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkcWF2cnFmaXN5endmcWhja2NwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNzM2MDksImV4cCI6MjA3OTc0OTYwOX0.0QlPwDyXZoiN5f-vioGQuDvW73lVwW_u6d8DW-eHCns",
+        "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkcWF2cnFmaXN5endmcWhja2NwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDE3MzYwOSwiZXhwIjoyMDc5NzQ5NjA5fQ.PRMw6oQbiv4kCP9sxt0u5zU9Ac2kzMg5sGhooWHlh5o"
+      }
+    }
+  }
+}
