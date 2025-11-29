@@ -291,8 +291,18 @@ serve(async (req) => {
         // Fetch all processes
         const allProcesses = await fetchAllProcesses(config, bearerToken)
 
+        // Update sync record with total count
+        await supabaseAdmin
+          .from('sync_history')
+          .update({
+            total_processes: allProcesses.length,
+            processed_count: 0,
+          })
+          .eq('id', syncRecord.id)
+
       let processesProcessed = 0
       let systemsAdded = 0
+      let totalProcessedCount = 0
       const processedSystemIds = new Set<number>()
 
       // Track existing processes and systems for cleanup
@@ -309,8 +319,37 @@ serve(async (req) => {
 
       // Process each process
       for (const process of allProcesses) {
+        // Check if sync was cancelled - poll the database every iteration
+        const { data: currentSync } = await supabaseAdmin
+          .from('sync_history')
+          .select('status')
+          .eq('id', syncRecord.id)
+          .single()
+
+        if (currentSync?.status === 'cancelled') {
+          console.log('Sync cancelled by user')
+          await supabaseAdmin
+            .from('sync_history')
+            .update({
+              completed_at: new Date().toISOString(),
+            })
+            .eq('id', syncRecord.id)
+          return // Exit the sync process
+        }
+
         // Fetch full process details
         const processDetail = await fetchProcessDetails(config, bearerToken, process.processUniqueId)
+
+        // Increment total processed count (includes processes without CPS230 tag)
+        totalProcessedCount++
+
+        // Update progress every process
+        await supabaseAdmin
+          .from('sync_history')
+          .update({
+            processed_count: totalProcessedCount,
+          })
+          .eq('id', syncRecord.id)
 
         // Only process if it has CPS230 tag
         if (!hasCPS230Tag(processDetail)) {

@@ -131,3 +131,22 @@ export function useLatestSync() {
     refetchInterval: 2000, // Poll every 2 seconds
   });
 }
+
+export function useCancelSync() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (syncId: string) => {
+      const { error } = await supabase
+        .from('sync_history')
+        .update({ status: 'cancelled' })
+        .eq('id', syncId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sync-history'] });
+      queryClient.invalidateQueries({ queryKey: ['latest-sync'] });
+    },
+  });
+}
