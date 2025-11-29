@@ -3,17 +3,47 @@ import { supabase } from '@/lib/supabase';
 import type { Process } from '@/types/database';
 import { useAuth } from '@/contexts/AuthContext';
 
+export interface ProcessWithSystems extends Process {
+  systems?: Array<{
+    id: string;
+    system_name: string;
+  }>;
+}
+
 export function useProcesses() {
   return useQuery({
     queryKey: ['processes'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // First get all processes
+      const { data: processes, error: processError } = await supabase
         .from('processes')
         .select('*')
         .order('process_name', { ascending: true });
 
-      if (error) throw error;
-      return data as Process[];
+      if (processError) throw processError;
+
+      // For each process, get its associated systems
+      const processesWithSystems = await Promise.all(
+        (processes || []).map(async (process) => {
+          const { data: processSystems } = await supabase
+            .from('process_systems')
+            .select(`
+              system_id,
+              systems:system_id (
+                id,
+                system_name
+              )
+            `)
+            .eq('process_id', process.id);
+
+          return {
+            ...process,
+            systems: processSystems?.map(ps => ps.systems).filter(Boolean) || [],
+          } as ProcessWithSystems;
+        })
+      );
+
+      return processesWithSystems;
     },
   });
 }
