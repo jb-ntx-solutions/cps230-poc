@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { useSettings, useUpdateSetting, useSyncProcessManager, useSyncHistory } from '@/hooks/useSettings';
+import { useSettings, useUpdateSetting, useSyncProcessManager, useSyncHistory, useLatestSync } from '@/hooks/useSettings';
 import { toast } from 'sonner';
 import { Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
 
@@ -13,7 +13,11 @@ export default function Settings() {
   const { data: settings = [], isLoading } = useSettings(['pm_site_url', 'pm_username', 'pm_password', 'pm_tenant_id']);
   const updateSettings = useUpdateSetting();
   const syncPM = useSyncProcessManager();
-  const { data: syncHistory = [] } = useSyncHistory();
+  const { data: latestSync } = useLatestSync();
+
+  // Poll sync history when there's an active sync
+  const isSyncing = latestSync?.status === 'in_progress';
+  const { data: syncHistory = [] } = useSyncHistory(isSyncing ? 2000 : undefined);
 
   const [siteUrl, setSiteUrl] = useState('');
   const [username, setUsername] = useState('');
@@ -46,12 +50,10 @@ export default function Settings() {
 
   const handleSyncNow = async () => {
     try {
-      const result = await syncPM.mutateAsync();
-      toast.success(
-        `Sync completed! ${result.processesProcessed} processes synced, ${result.systemsAdded} systems added`
-      );
-    } catch (error) {
-      toast.error(`Sync failed: ${error.message}`);
+      await syncPM.mutateAsync();
+      toast.success('Sync started! Check the Sync History below for progress.');
+    } catch (error: any) {
+      toast.error(`Failed to start sync: ${error?.message || 'Unknown error'}`);
       console.error(error);
     }
   };
@@ -151,23 +153,31 @@ export default function Settings() {
                         />
                       </div>
 
-                      <div className="flex space-x-2">
-                        <Button
-                          className="bg-nintex-orange hover:bg-nintex-orange-hover"
-                          onClick={handleSaveConnection}
-                          disabled={updateSettings.isPending}
-                        >
-                          {updateSettings.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                          Save Connection
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={handleSyncNow}
-                          disabled={syncPM.isPending || !siteUrl || !tenantId || !username || !password}
-                        >
-                          {syncPM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                          Sync Now
-                        </Button>
+                      <div className="space-y-2">
+                        <div className="flex space-x-2">
+                          <Button
+                            className="bg-nintex-orange hover:bg-nintex-orange-hover"
+                            onClick={handleSaveConnection}
+                            disabled={updateSettings.isPending}
+                          >
+                            {updateSettings.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Save Connection
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={handleSyncNow}
+                            disabled={syncPM.isPending || isSyncing || !siteUrl || !tenantId || !username || !password}
+                          >
+                            {(syncPM.isPending || isSyncing) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {isSyncing ? 'Syncing...' : 'Sync Now'}
+                          </Button>
+                        </div>
+                        {isSyncing && (
+                          <p className="text-sm text-blue-600 flex items-center gap-2">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Sync in progress... You can navigate away, it will continue in the background.
+                          </p>
+                        )}
                       </div>
                     </>
                   )}

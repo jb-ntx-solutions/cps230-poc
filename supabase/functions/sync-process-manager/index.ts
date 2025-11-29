@@ -193,6 +193,9 @@ serve(async (req) => {
       throw new Error('Missing authorization header')
     }
 
+    // Extract the JWT token from the Authorization header
+    const token = authHeader.replace('Bearer ', '')
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -208,8 +211,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
-    // Verify user is a Promaster
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    // Verify user is a Promaster - use getUser with the token
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
     if (userError) {
       console.error('Auth error:', userError)
       throw new Error(`Authentication failed: ${userError.message}`)
@@ -274,12 +277,19 @@ serve(async (req) => {
       .select()
       .single()
 
-    try {
-      // Authenticate with Process Manager
-      const bearerToken = await authenticateProcessManager(config)
+    if (!syncRecord) {
+      throw new Error('Failed to create sync history record')
+    }
 
-      // Fetch all processes
-      const allProcesses = await fetchAllProcesses(config, bearerToken)
+    // Start the sync process asynchronously (don't await)
+    // This allows us to return immediately to the client
+    (async () => {
+      try {
+        // Authenticate with Process Manager
+        const bearerToken = await authenticateProcessManager(config)
+
+        // Fetch all processes
+        const allProcesses = await fetchAllProcesses(config, bearerToken)
 
       let processesProcessed = 0
       let systemsAdded = 0
@@ -429,32 +439,33 @@ serve(async (req) => {
           onConflict: 'key,account_id',
         })
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          processesProcessed,
-          systemsAdded,
-          processesDeleted: processesToDelete.length,
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        }
-      )
-    } catch (error) {
+      console.log(`Sync completed: ${processesProcessed} processes, ${systemsAdded} systems, ${processesToDelete.length} deleted`)
+    } catch (error: any) {
       // Update sync history with error
-      if (syncRecord) {
-        await supabaseAdmin
-          .from('sync_history')
-          .update({
-            status: 'failed',
-            error_message: error.message,
-            completed_at: new Date().toISOString(),
-          })
-          .eq('id', syncRecord.id)
-      }
-      throw error
+      console.error('Sync error:', error)
+      await supabaseAdmin
+        .from('sync_history')
+        .update({
+          status: 'failed',
+          error_message: error?.message || 'Unknown error',
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', syncRecord.id)
     }
+    })() // Execute the async function immediately
+
+    // Return immediately to the client with sync started status
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: 'Sync started',
+        syncId: syncRecord.id,
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      }
+    )
   } catch (error) {
     return new Response(
       JSON.stringify({
