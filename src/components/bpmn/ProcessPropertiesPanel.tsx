@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ExternalLink, X, Copy, Check } from 'lucide-react';
+import { X, Copy, Check } from 'lucide-react';
 import { useSettings } from '@/hooks/useSettings';
 import { toast } from 'sonner';
 
@@ -37,11 +37,16 @@ export function ProcessPropertiesPanel({
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedUrl, setCopiedUrl] = useState(false);
 
-  // Get site URL from settings
-  const { data: settings } = useSettings(['pm_site_url', 'pm_tenant_id', 'site_url']);
+  // Get site URL and tenant ID from settings
+  const { data: settings } = useSettings(['pm_site_url', 'pm_tenant_id']);
   const pmSiteUrl = settings?.find(s => s.key === 'pm_site_url')?.value as string;
   const pmTenantId = settings?.find(s => s.key === 'pm_tenant_id')?.value as string;
-  const siteUrl = settings?.find(s => s.key === 'site_url')?.value as string || window.location.origin;
+
+  // Construct full base URL from site URL + tenant ID
+  // Examples:
+  // - https://demo.promapp.com/93555a16ceb24f139a6e8a40618d3f8b
+  // - https://us.promapp.com/contoso
+  const baseUrl = pmSiteUrl && pmTenantId ? `https://${pmSiteUrl}/${pmTenantId}` : '';
 
   const selectedProcess = processes.find(p => p.id === selectedProcessId);
 
@@ -55,14 +60,10 @@ export function ProcessPropertiesPanel({
     onProcessLink(processId);
   };
 
-  const handleOpenInPM = () => {
-    if (!selectedProcess || !pmSiteUrl || !pmTenantId) return;
-
-    const url = `https://${pmSiteUrl}/${pmTenantId}/Process/${selectedProcess.process_unique_id}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const processUrl = selectedProcess ? `${siteUrl}/Process/${selectedProcess.process_unique_id}` : '';
+  // Construct full process URL: baseUrl + /Process/{uniqueId}
+  const processUrl = selectedProcess && baseUrl
+    ? `${baseUrl}/Process/${selectedProcess.process_unique_id}`
+    : '';
 
   const handleCopyUrl = async () => {
     if (!processUrl) return;
@@ -152,17 +153,21 @@ export function ProcessPropertiesPanel({
               {/* Process URL */}
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Process URL</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={processUrl}
-                    readOnly
-                    className="text-xs font-mono bg-muted flex-1"
-                  />
+                <div className="flex gap-2 items-start">
+                  <a
+                    href={processUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 text-xs font-mono text-primary hover:underline break-all bg-muted p-2 rounded border border-input"
+                  >
+                    {processUrl}
+                  </a>
                   <Button
                     variant="outline"
                     size="icon"
                     onClick={handleCopyUrl}
                     title="Copy URL"
+                    className="shrink-0"
                   >
                     {copiedUrl ? (
                       <Check className="h-4 w-4 text-green-600" />
@@ -251,19 +256,6 @@ export function ProcessPropertiesPanel({
                     ))}
                   </div>
                 </div>
-              )}
-
-              {/* Open in Process Manager */}
-              {pmSiteUrl && pmTenantId && (
-                <Button
-                  onClick={handleOpenInPM}
-                  className="w-full mt-3"
-                  variant="outline"
-                  size="sm"
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Open in Process Manager
-                </Button>
               )}
             </div>
           )}
