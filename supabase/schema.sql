@@ -250,15 +250,10 @@ CREATE POLICY "Promasters can modify controls"
         )
     );
 
--- Settings Policies (Only Promasters)
-CREATE POLICY "Promasters can view settings"
+-- Settings Policies
+CREATE POLICY "Authenticated users can view settings"
     ON public.settings FOR SELECT
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.user_profiles
-            WHERE user_id = auth.uid() AND role = 'promaster'
-        )
-    );
+    USING (auth.role() = 'authenticated');
 
 CREATE POLICY "Promasters can modify settings"
     ON public.settings FOR ALL
