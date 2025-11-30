@@ -2,11 +2,11 @@ import { AppLayout } from '@/components/AppLayout';
 import { BpmnCanvas } from '@/components/bpmn/BpmnCanvas';
 import { FiltersSidebar } from '@/components/bpmn/FiltersSidebar';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { FilterState } from '@/components/bpmn/utils/highlightCalculator';
 import { useAuth } from '@/contexts/AuthContext';
+import { systemsApi, processesApi, controlsApi, criticalOperationsApi } from '@/lib/api';
 
 interface Process {
   id: string;
@@ -49,86 +49,25 @@ export default function Dashboard() {
   // Fetch all systems
   const { data: systems, isLoading: systemsLoading } = useQuery({
     queryKey: ['systems'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('systems')
-        .select('*')
-        .order('system_name');
-
-      if (error) throw error;
-      return data as System[];
-    },
+    queryFn: () => systemsApi.getAll(),
   });
 
   // Fetch all processes with related data
   const { data: processes, isLoading: processesLoading } = useQuery({
     queryKey: ['processes-with-relations'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('processes')
-        .select(`
-          *,
-          process_systems!inner (
-            system:systems (
-              id,
-              system_name
-            )
-          ),
-          controls!controls_process_id_fkey (
-            id
-          ),
-          critical_operations!critical_operations_process_id_fkey (
-            id
-          )
-        `)
-        .order('process_name');
-
-      if (error) throw error;
-
-      // Transform the data to include systems, controls, and critical operations
-      return (data || []).map((process: any) => ({
-        id: process.id,
-        process_name: process.process_name,
-        process_unique_id: process.process_unique_id,
-        pm_process_id: process.pm_process_id,
-        owner_username: process.owner_username,
-        input_processes: process.input_processes,
-        output_processes: process.output_processes,
-        canvas_position: process.canvas_position,
-        regions: process.regions,
-        systems: process.process_systems?.map((ps: any) => ps.system).filter(Boolean) || [],
-        controls: process.controls || [],
-        criticalOperations: process.critical_operations || []
-      }));
-    },
+    queryFn: () => processesApi.getAll(),
   });
 
   // Fetch all controls
   const { data: controls, isLoading: controlsLoading } = useQuery({
     queryKey: ['controls'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('controls')
-        .select('id, control_id, control_name')
-        .order('control_name');
-
-      if (error) throw error;
-      return data as Control[];
-    },
+    queryFn: () => controlsApi.getAll(),
   });
 
   // Fetch all critical operations
   const { data: criticalOperations, isLoading: criticalOpsLoading } = useQuery({
     queryKey: ['critical-operations'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('critical_operations')
-        .select('id, operation_name')
-        .order('operation_name');
-
-      if (error) throw error;
-      return data as CriticalOperation[];
-    },
+    queryFn: () => criticalOperationsApi.getAll(),
   });
 
   // Extract unique regions from processes

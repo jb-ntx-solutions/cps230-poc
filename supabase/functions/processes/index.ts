@@ -39,9 +39,23 @@ serve(async (req) => {
             `)
             .eq('process_id', id)
 
+          // Get associated controls
+          const { data: controls } = await supabaseClient
+            .from('controls')
+            .select('id')
+            .eq('process_id', id)
+
+          // Get associated critical operations
+          const { data: criticalOperations } = await supabaseClient
+            .from('critical_operations')
+            .select('id')
+            .eq('process_id', id)
+
           const processWithSystems = {
             ...process,
             systems: processSystems?.map(ps => ps.systems).filter(Boolean) || [],
+            controls: controls || [],
+            criticalOperations: criticalOperations || [],
           }
 
           return new Response(JSON.stringify({ data: processWithSystems }), {
@@ -56,7 +70,7 @@ serve(async (req) => {
 
           if (processError) throw processError
 
-          // For each process, get its associated systems
+          // For each process, get its associated systems, controls, and critical operations
           const processesWithSystems = await Promise.all(
             (processes || []).map(async (process) => {
               const { data: processSystems } = await supabaseClient
@@ -70,9 +84,21 @@ serve(async (req) => {
                 `)
                 .eq('process_id', process.id)
 
+              const { data: controls } = await supabaseClient
+                .from('controls')
+                .select('id')
+                .eq('process_id', process.id)
+
+              const { data: criticalOperations } = await supabaseClient
+                .from('critical_operations')
+                .select('id')
+                .eq('process_id', process.id)
+
               return {
                 ...process,
                 systems: processSystems?.map(ps => ps.systems).filter(Boolean) || [],
+                controls: controls || [],
+                criticalOperations: criticalOperations || [],
               }
             })
           )
