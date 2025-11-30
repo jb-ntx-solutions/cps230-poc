@@ -4,8 +4,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ExternalLink, X } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ExternalLink, X, Copy, Check } from 'lucide-react';
 import { useSettings } from '@/hooks/useSettings';
+import { toast } from 'sonner';
 
 interface Process {
   id: string;
@@ -13,58 +15,33 @@ interface Process {
   process_unique_id: string;
   pm_process_id?: number | null;
   owner_username?: string | null;
+  regions?: string[] | null;
+  systems?: Array<{ id: string; system_name: string }>;
+  controls?: Array<{ id: string; control_name: string }>;
+  criticalOperations?: Array<{ id: string; operation_name: string }>;
 }
 
 interface ProcessPropertiesPanelProps {
-  selectedElement: any | null;
+  selectedProcessId: string | null;
   processes: Process[];
-  onProcessLink: (elementId: string, processId: string) => void;
+  onProcessLink: (processId: string) => void;
   onClose: () => void;
 }
 
 export function ProcessPropertiesPanel({
-  selectedElement,
+  selectedProcessId,
   processes,
   onProcessLink,
   onClose
 }: ProcessPropertiesPanelProps) {
-  const [selectedProcessId, setSelectedProcessId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
-  // Get Process Manager settings for "Open in PM" link
-  const { data: settings } = useSettings(['pm_site_url', 'pm_tenant_id']);
+  // Get site URL from settings
+  const { data: settings } = useSettings(['pm_site_url', 'pm_tenant_id', 'site_url']);
   const pmSiteUrl = settings?.find(s => s.key === 'pm_site_url')?.value as string;
   const pmTenantId = settings?.find(s => s.key === 'pm_tenant_id')?.value as string;
-
-  // Get linked process from element's calledElement or custom extension
-  useEffect(() => {
-    if (!selectedElement) {
-      setSelectedProcessId('');
-      return;
-    }
-
-    // Try to get from calledElement attribute
-    const calledElement = selectedElement.businessObject?.calledElement;
-    if (calledElement) {
-      setSelectedProcessId(calledElement);
-      return;
-    }
-
-    // Try to get from custom extension
-    const extensionElements = selectedElement.businessObject?.extensionElements;
-    if (extensionElements?.values) {
-      const processData = extensionElements.values.find((el: any) =>
-        el.$type === 'custom:ProcessData'
-      );
-      if (processData?.processId) {
-        setSelectedProcessId(processData.processId);
-      }
-    }
-  }, [selectedElement]);
-
-  if (!selectedElement || selectedElement.type !== 'bpmn:CallActivity') {
-    return null;
-  }
+  const siteUrl = settings?.find(s => s.key === 'site_url')?.value as string || window.location.origin;
 
   const selectedProcess = processes.find(p => p.id === selectedProcessId);
 
@@ -75,8 +52,7 @@ export function ProcessPropertiesPanel({
   );
 
   const handleProcessSelect = (processId: string) => {
-    setSelectedProcessId(processId);
-    onProcessLink(selectedElement.id, processId);
+    onProcessLink(processId);
   };
 
   const handleOpenInPM = () => {
@@ -86,15 +62,30 @@ export function ProcessPropertiesPanel({
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const processUrl = selectedProcess ? `${siteUrl}/Process/${selectedProcess.process_unique_id}` : '';
+
+  const handleCopyUrl = async () => {
+    if (!processUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(processUrl);
+      setCopiedUrl(true);
+      toast.success('URL copied to clipboard');
+      setTimeout(() => setCopiedUrl(false), 2000);
+    } catch (err) {
+      toast.error('Failed to copy URL');
+    }
+  };
+
   return (
-    <div className="w-80 border-l bg-background overflow-y-auto">
+    <div className="w-96 border-l bg-background overflow-y-auto">
       <Card className="rounded-none border-0">
         <CardHeader>
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <CardTitle className="text-lg">Call Activity Properties</CardTitle>
+              <CardTitle className="text-lg">Process Properties</CardTitle>
               <CardDescription className="mt-1">
-                Link this activity to a process
+                View and manage process details
               </CardDescription>
             </div>
             <Button
@@ -109,27 +100,8 @@ export function ProcessPropertiesPanel({
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Element Info */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Element ID</Label>
-            <Input
-              value={selectedElement.id}
-              readOnly
-              className="text-xs font-mono bg-muted"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Element Name</Label>
-            <Input
-              value={selectedElement.businessObject?.name || '(unnamed)'}
-              readOnly
-              className="text-xs bg-muted"
-            />
-          </div>
-
-          <div className="border-t pt-4 space-y-3">
-            {/* Process Search */}
+          {/* Process Search & Selector */}
+          <div className="space-y-3">
             <div className="space-y-2">
               <Label>Search Process</Label>
               <Input
@@ -140,10 +112,9 @@ export function ProcessPropertiesPanel({
               />
             </div>
 
-            {/* Process Selector */}
             <div className="space-y-2">
-              <Label>Linked Process *</Label>
-              <Select value={selectedProcessId} onValueChange={handleProcessSelect}>
+              <Label>Select Process</Label>
+              <Select value={selectedProcessId || undefined} onValueChange={handleProcessSelect}>
                 <SelectTrigger className="text-sm">
                   <SelectValue placeholder="Select a process..." />
                 </SelectTrigger>
@@ -167,49 +138,135 @@ export function ProcessPropertiesPanel({
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Linked Process Details */}
-            {selectedProcess && (
-              <div className="mt-4 space-y-3 p-3 rounded-lg bg-muted/50">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Process Name</Label>
-                  <p className="text-sm font-medium">{selectedProcess.process_name}</p>
-                </div>
-
-                {selectedProcess.pm_process_id && (
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">PM Process ID</Label>
-                    <p className="text-sm font-mono">{selectedProcess.pm_process_id}</p>
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Process Unique ID</Label>
-                  <p className="text-xs font-mono break-all">{selectedProcess.process_unique_id}</p>
-                </div>
-
-                {selectedProcess.owner_username && (
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Owner</Label>
-                    <p className="text-sm">{selectedProcess.owner_username}</p>
-                  </div>
-                )}
-
-                {/* Open in Process Manager */}
-                {pmSiteUrl && pmTenantId && (
-                  <Button
-                    onClick={handleOpenInPM}
-                    className="w-full mt-3"
-                    variant="outline"
-                    size="sm"
-                  >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Open in Process Manager
-                  </Button>
-                )}
-              </div>
-            )}
           </div>
+
+          {/* Process Details */}
+          {selectedProcess && (
+            <div className="border-t pt-4 space-y-4">
+              {/* Process Name */}
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Process Name</Label>
+                <p className="text-sm font-medium">{selectedProcess.process_name}</p>
+              </div>
+
+              {/* Process URL */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Process URL</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={processUrl}
+                    readOnly
+                    className="text-xs font-mono bg-muted flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleCopyUrl}
+                    title="Copy URL"
+                  >
+                    {copiedUrl ? (
+                      <Check className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Process Unique ID */}
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Process Unique ID</Label>
+                <p className="text-xs font-mono break-all bg-muted p-2 rounded">
+                  {selectedProcess.process_unique_id}
+                </p>
+              </div>
+
+              {/* PM Process ID */}
+              {selectedProcess.pm_process_id && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">PM Process ID</Label>
+                  <p className="text-sm font-mono">{selectedProcess.pm_process_id}</p>
+                </div>
+              )}
+
+              {/* Owner */}
+              {selectedProcess.owner_username && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Owner</Label>
+                  <p className="text-sm">{selectedProcess.owner_username}</p>
+                </div>
+              )}
+
+              {/* Regions */}
+              {selectedProcess.regions && selectedProcess.regions.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Regions</Label>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedProcess.regions.map((region) => (
+                      <Badge key={region} variant="secondary" className="text-xs">
+                        {region}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Systems */}
+              {selectedProcess.systems && selectedProcess.systems.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Related Systems</Label>
+                  <div className="flex flex-col gap-1">
+                    {selectedProcess.systems.map((system) => (
+                      <Badge key={system.id} variant="outline" className="text-xs justify-start">
+                        {system.system_name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Controls */}
+              {selectedProcess.controls && selectedProcess.controls.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Related Controls</Label>
+                  <div className="flex flex-col gap-1">
+                    {selectedProcess.controls.map((control) => (
+                      <Badge key={control.id} variant="outline" className="text-xs justify-start">
+                        {control.control_name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Critical Operations */}
+              {selectedProcess.criticalOperations && selectedProcess.criticalOperations.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Critical Operations</Label>
+                  <div className="flex flex-col gap-1">
+                    {selectedProcess.criticalOperations.map((operation) => (
+                      <Badge key={operation.id} variant="destructive" className="text-xs justify-start">
+                        {operation.operation_name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Open in Process Manager */}
+              {pmSiteUrl && pmTenantId && (
+                <Button
+                  onClick={handleOpenInPM}
+                  className="w-full mt-3"
+                  variant="outline"
+                  size="sm"
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open in Process Manager
+                </Button>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

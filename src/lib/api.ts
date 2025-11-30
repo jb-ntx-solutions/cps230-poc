@@ -89,6 +89,14 @@ export interface ProcessWithSystems extends Process {
     id: string
     system_name: string
   }>
+  controls?: Array<{
+    id: string
+    control_name: string
+  }>
+  criticalOperations?: Array<{
+    id: string
+    operation_name: string
+  }>
 }
 
 export const processesApi = {
