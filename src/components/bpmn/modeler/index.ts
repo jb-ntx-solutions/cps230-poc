@@ -20,7 +20,7 @@ export const customContextPadModule = {
 
 // Configuration helper
 export function getModelerConfig(userRole: string) {
-  return {
+  const config: any = {
     userRole,
     additionalModules: [
       customPaletteModule,
@@ -49,4 +49,28 @@ export function getModelerConfig(userRole: string) {
       }
     }
   };
+
+  // For basic users, disable all editing modules
+  if (userRole === 'user') {
+    config.additionalModules = [
+      ...config.additionalModules,
+      {
+        // Disable move, resize, and other interactions
+        bendpoints: ['value', null],
+        move: ['value', null],
+        resize: ['value', null],
+        contextPad: ['value', null],
+        palette: ['value', null],
+        lassoTool: ['value', null],
+        handTool: ['value', null],
+        globalConnect: ['value', null],
+        distributeElements: ['value', null],
+        alignElements: ['value', null],
+        directEditing: ['value', null],
+        labelEditingProvider: ['value', null]
+      }
+    ];
+  }
+
+  return config;
 }

@@ -104,24 +104,6 @@ export function BpmnCanvas({
     modeler.importXML(bpmnXml).then(() => {
       const canvas = modeler.get('canvas') as any;
       canvas.zoom('fit-viewport');
-
-      // Set read-only mode for basic users
-      if (userRole === 'user') {
-        const eventBus = modeler.get('eventBus') as any;
-
-        // Prevent all editing operations
-        eventBus.on('commandStack.shape.create.preExecute', 10000, () => false);
-        eventBus.on('commandStack.shape.delete.preExecute', 10000, () => false);
-        eventBus.on('commandStack.connection.create.preExecute', 10000, () => false);
-        eventBus.on('commandStack.connection.delete.preExecute', 10000, () => false);
-        eventBus.on('commandStack.elements.move.preExecute', 10000, () => false);
-        eventBus.on('commandStack.shape.resize.preExecute', 10000, () => false);
-        eventBus.on('commandStack.element.updateProperties.preExecute', 10000, () => false);
-
-        // Disable context pad and palette for read-only mode
-        modeler.get('contextPad').close();
-        modeler.get('palette').close();
-      }
     }).catch((err: Error) => {
       console.error('Error importing BPMN diagram:', err);
       setError('Failed to load process diagram');
