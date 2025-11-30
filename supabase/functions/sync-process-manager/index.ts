@@ -79,7 +79,8 @@ interface SearchAuthResponse {
 interface SearchResult {
   Name: string
   EntityType: string
-  ProcessUniqueId: string
+  ProcessUniqueId?: string
+  ItemUrl?: string
   HighLights?: {
     Activities?: string[]
     Tasks?: string[]
@@ -184,7 +185,7 @@ async function searchCPS230Processes(
   searchToken: string
 ): Promise<string[]> {
   const searchEndpoint = getSearchEndpoint(config.siteUrl)
-  const searchUrl = `https://${searchEndpoint}/fullsearch?SearchCriteria=CPS230&IncludedTypes=1&SearchMatchType=0`
+  const searchUrl = `https://${searchEndpoint}/fullsearch?SearchCriteria=%23CPS230&IncludedTypes=1&SearchMatchType=0`
 
   let allProcessUniqueIds: string[] = []
   let pageNumber = 1
@@ -211,17 +212,27 @@ async function searchCPS230Processes(
 
     const data: SearchResponse = await response.json()
 
+    console.log(`Search API returned ${data.response?.length || 0} results. Success: ${data.success}`)
+
     if (!data.success) {
       console.error('Search API returned unsuccessful response:', JSON.stringify(data))
       throw new Error('Search API returned unsuccessful response')
     }
 
+    // Log first result for debugging
+    if (data.response && data.response.length > 0) {
+      console.log(`First result sample: ${JSON.stringify(data.response[0]).substring(0, 300)}`)
+    }
+
     // Filter results that have CPS230 in highlights
     const cps230Processes = data.response.filter(result => {
       const highlights = result.HighLights
-      if (!highlights) return false
+      if (!highlights) {
+        console.log(`Result ${result.Name} has no HighLights, including it anyway since search returned it`)
+        return true // If search returned it for "CPS230", include it even without highlights
+      }
 
-      // Check all highlight types for CPS230
+      // Check all highlight types for #CPS230
       const allHighlights = [
         ...(highlights.Activities || []),
         ...(highlights.Tasks || []),
@@ -229,15 +240,36 @@ async function searchCPS230Processes(
         ...(highlights.ProcessTags || []),
       ].join(' ')
 
-      return allHighlights.includes('CPS230') || allHighlights.includes('cps230')
+      const hasCPS230 = allHighlights.includes('#CPS230') || allHighlights.includes('#cps230') || allHighlights.includes('CPS230')
+      if (!hasCPS230) {
+        console.log(`Result ${result.Name} highlights don't contain #CPS230: ${allHighlights.substring(0, 100)}`)
+      }
+      return hasCPS230
     })
 
-    // Extract unique IDs
+    console.log(`Filtered to ${cps230Processes.length} processes with CPS230 in highlights`)
+
+    // Extract unique IDs from ProcessUniqueId or ItemUrl
     const uniqueIds = cps230Processes
-      .map(p => p.ProcessUniqueId)
+      .map(p => {
+        // Try ProcessUniqueId first
+        if (p.ProcessUniqueId) {
+          return p.ProcessUniqueId
+        }
+        // Extract from ItemUrl if ProcessUniqueId not available
+        if (p.ItemUrl) {
+          const match = p.ItemUrl.match(/\/Process\/([a-f0-9-]+)/i)
+          if (match && match[1]) {
+            return match[1]
+          }
+        }
+        console.log(`Could not extract ID for process: ${p.Name}`)
+        return null
+      })
       .filter(id => id) // Filter out any null/undefined
 
-    allProcessUniqueIds.push(...uniqueIds)
+    console.log(`Extracted ${uniqueIds.length} unique IDs`)
+    allProcessUniqueIds.push(...uniqueIds as string[])
 
     // Check if there are more pages
     hasMore = !data.paging.IsLastPage
