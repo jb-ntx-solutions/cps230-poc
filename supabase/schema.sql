@@ -341,7 +341,7 @@ CREATE INDEX idx_sync_history_status ON public.sync_history(status);
 INSERT INTO public.settings (key, value, description, modified_by) VALUES
     ('nintex_api_url', '""', 'Nintex Process Manager API base URL', 'system'),
     ('nintex_api_credentials', '{"username": "", "password": ""}', 'Nintex Process Manager API credentials (encrypted)', 'system'),
-    ('available_regions', '["AU", "UK", "US"]', 'Available regions for controls', 'system'),
+    ('regions', '[{"name": "AU", "label": "Australia"}, {"name": "UK", "label": "United Kingdom"}, {"name": "US", "label": "United States"}, {"name": "NZ", "label": "New Zealand"}, {"name": "SG", "label": "Singapore"}]', 'Available regions for assignment to processes and controls', 'system'),
     ('sync_frequency', '"manual"', 'How often to sync with Nintex (manual, daily, weekly)', 'system'),
     ('last_sync_timestamp', 'null', 'Timestamp of last successful sync', 'system')
 ON CONFLICT (key) DO NOTHING;

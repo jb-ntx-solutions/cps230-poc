@@ -26,13 +26,15 @@ interface ProcessPropertiesPanelProps {
   processes: Process[];
   onProcessLink: (processId: string) => void;
   onClose: () => void;
+  readOnly?: boolean;
 }
 
 export function ProcessPropertiesPanel({
   selectedProcessId,
   processes,
   onProcessLink,
-  onClose
+  onClose,
+  readOnly = false
 }: ProcessPropertiesPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedUrl, setCopiedUrl] = useState(false);
@@ -101,49 +103,51 @@ export function ProcessPropertiesPanel({
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Process Search & Selector */}
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <Label>Search Process</Label>
-              <Input
-                placeholder="Search by name or ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="text-sm"
-              />
-            </div>
+          {/* Process Search & Selector - only for editors */}
+          {!readOnly && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Search Process</Label>
+                <Input
+                  placeholder="Search by name or ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label>Select Process</Label>
-              <Select value={selectedProcessId || undefined} onValueChange={handleProcessSelect}>
-                <SelectTrigger className="text-sm">
-                  <SelectValue placeholder="Select a process..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredProcesses.length === 0 ? (
-                    <div className="p-2 text-sm text-muted-foreground">
-                      No processes found
-                    </div>
-                  ) : (
-                    filteredProcesses.map((process) => (
-                      <SelectItem key={process.id} value={process.id} className="text-sm">
-                        <div className="flex flex-col">
-                          <span>{process.process_name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {process.process_unique_id}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Label>Select Process</Label>
+                <Select value={selectedProcessId || undefined} onValueChange={handleProcessSelect}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder="Select a process..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredProcesses.length === 0 ? (
+                      <div className="p-2 text-sm text-muted-foreground">
+                        No processes found
+                      </div>
+                    ) : (
+                      filteredProcesses.map((process) => (
+                        <SelectItem key={process.id} value={process.id} className="text-sm">
+                          <div className="flex flex-col">
+                            <span>{process.process_name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {process.process_unique_id}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Process Details */}
           {selectedProcess && (
-            <div className="border-t pt-4 space-y-4">
+            <div className={readOnly ? "space-y-4" : "border-t pt-4 space-y-4"}>
               {/* Process Name */}
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Process Name</Label>

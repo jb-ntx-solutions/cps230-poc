@@ -22,6 +22,7 @@ interface NavItem {
   icon: ReactNode;
   requiresPromaster?: boolean;
   requiresBusinessAnalyst?: boolean;
+  requiresEditor?: boolean; // Requires promaster or business_analyst
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
@@ -58,6 +59,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           />
         </svg>
       ),
+      requiresEditor: true,
     },
     {
       name: 'Users',
@@ -100,6 +102,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const filteredNavigation = navigation.filter((item) => {
     if (item.requiresPromaster && !isPromaster) return false;
     if (item.requiresBusinessAnalyst && !isBusinessAnalyst) return false;
+    if (item.requiresEditor && !isPromaster && !isBusinessAnalyst) return false;
     return true;
   });
 
