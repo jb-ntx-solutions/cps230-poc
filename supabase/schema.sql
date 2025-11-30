@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS public.processes (
     output_processes TEXT[], -- Array of process IDs that this process feeds into
     canvas_position JSONB, -- Stores x, y coordinates for BPMN canvas
     metadata JSONB, -- Additional metadata from Nintex
+    regions TEXT[], -- Array of region identifiers (e.g., ['AU', 'UK', 'US'])
     modified_by TEXT NOT NULL,
     modified_date TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
