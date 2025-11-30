@@ -6,11 +6,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useSettings, useUpdateSetting, useSyncProcessManager, useSyncHistory, useLatestSync, useCancelSync } from '@/hooks/useSettings';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Clock, Plus, Trash2, Edit2, Check, X as XIcon } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+
+interface Region {
+  name: string;
+  label: string;
+  icon?: string;
+}
 
 export default function Settings() {
-  const { data: settings = [], isLoading } = useSettings(['pm_site_url', 'pm_username', 'pm_password', 'pm_tenant_id']);
+  const { profile } = useAuth();
+  const { data: settings = [], isLoading } = useSettings(['pm_site_url', 'pm_username', 'pm_password', 'pm_tenant_id', 'regions']);
   const updateSettings = useUpdateSetting();
   const syncPM = useSyncProcessManager();
   const cancelSync = useCancelSync();
@@ -20,10 +29,26 @@ export default function Settings() {
   const isSyncing = latestSync?.status === 'in_progress';
   const { data: syncHistory = [] } = useSyncHistory(isSyncing ? 2000 : undefined);
 
+  // Nintex PM settings
   const [siteUrl, setSiteUrl] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [tenantId, setTenantId] = useState('');
+
+  // Regions settings
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [newRegionName, setNewRegionName] = useState('');
+  const [newRegionLabel, setNewRegionLabel] = useState('');
+  const [newRegionIcon, setNewRegionIcon] = useState('');
+  const [editingRegionIndex, setEditingRegionIndex] = useState<number | null>(null);
+  const [editRegionLabel, setEditRegionLabel] = useState('');
+  const [editRegionIcon, setEditRegionIcon] = useState('');
+
+  // General settings
+  const [accountName, setAccountName] = useState('');
+  const [accountDomain, setAccountDomain] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [isLoadingAccount, setIsLoadingAccount] = useState(true);
 
   useEffect(() => {
     if (settings.length > 0) {
@@ -31,8 +56,44 @@ export default function Settings() {
       setUsername((settings.find(s => s.key === 'pm_username')?.value as string) || '');
       setPassword((settings.find(s => s.key === 'pm_password')?.value as string) || '');
       setTenantId((settings.find(s => s.key === 'pm_tenant_id')?.value as string) || '');
+
+      const regionsData = settings.find(s => s.key === 'regions')?.value as Region[] | undefined;
+      setRegions(regionsData || []);
     }
   }, [settings]);
+
+  // Load account data
+  useEffect(() => {
+    const loadAccountData = async () => {
+      if (!profile?.account_id) {
+        setIsLoadingAccount(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('accounts')
+          .select('*')
+          .eq('id', profile.account_id)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          setAccountName(data.account_name);
+          setAccountDomain(data.email_domain);
+          setAccountId(data.id);
+        }
+      } catch (error) {
+        console.error('Error loading account:', error);
+        toast.error('Failed to load account information');
+      } finally {
+        setIsLoadingAccount(false);
+      }
+    };
+
+    loadAccountData();
+  }, [profile?.account_id]);
 
   const handleSaveConnection = async () => {
     try {
@@ -71,6 +132,108 @@ export default function Settings() {
     }
   };
 
+  const handleAddRegion = async () => {
+    if (!newRegionName.trim() || !newRegionLabel.trim()) {
+      toast.error('Region name and label are required');
+      return;
+    }
+
+    if (regions.some(r => r.name === newRegionName.trim())) {
+      toast.error('A region with this name already exists');
+      return;
+    }
+
+    const newRegions = [...regions, {
+      name: newRegionName.trim(),
+      label: newRegionLabel.trim(),
+      icon: newRegionIcon.trim() || undefined
+    }];
+
+    try {
+      await updateSettings.mutateAsync([{ key: 'regions', value: newRegions }]);
+      setRegions(newRegions);
+      setNewRegionName('');
+      setNewRegionLabel('');
+      setNewRegionIcon('');
+      toast.success('Region added successfully');
+    } catch (error) {
+      toast.error('Failed to add region');
+      console.error(error);
+    }
+  };
+
+  const handleDeleteRegion = async (index: number) => {
+    const newRegions = regions.filter((_, i) => i !== index);
+    try {
+      await updateSettings.mutateAsync([{ key: 'regions', value: newRegions }]);
+      setRegions(newRegions);
+      toast.success('Region deleted successfully');
+    } catch (error) {
+      toast.error('Failed to delete region');
+      console.error(error);
+    }
+  };
+
+  const handleStartEditRegion = (index: number) => {
+    setEditingRegionIndex(index);
+    setEditRegionLabel(regions[index].label);
+    setEditRegionIcon(regions[index].icon || '');
+  };
+
+  const handleSaveEditRegion = async (index: number) => {
+    if (!editRegionLabel.trim()) {
+      toast.error('Region label is required');
+      return;
+    }
+
+    const newRegions = [...regions];
+    newRegions[index] = {
+      ...newRegions[index],
+      label: editRegionLabel.trim(),
+      icon: editRegionIcon.trim() || undefined
+    };
+
+    try {
+      await updateSettings.mutateAsync([{ key: 'regions', value: newRegions }]);
+      setRegions(newRegions);
+      setEditingRegionIndex(null);
+      toast.success('Region updated successfully');
+    } catch (error) {
+      toast.error('Failed to update region');
+      console.error(error);
+    }
+  };
+
+  const handleCancelEditRegion = () => {
+    setEditingRegionIndex(null);
+    setEditRegionLabel('');
+    setEditRegionIcon('');
+  };
+
+  const handleUpdateAccount = async () => {
+    if (!accountName.trim()) {
+      toast.error('Account name is required');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('accounts')
+        .update({
+          account_name: accountName.trim(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', accountId);
+
+      if (error) throw error;
+
+      toast.success('Account updated successfully');
+    } catch (error) {
+      toast.error('Failed to update account');
+      console.error(error);
+    }
+  };
+
   const getSyncStatusIcon = (status: string) => {
     switch (status) {
       case 'success':
@@ -85,6 +248,7 @@ export default function Settings() {
         return <Clock className="h-4 w-4 text-gray-400" />;
     }
   };
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -277,14 +441,146 @@ export default function Settings() {
           <TabsContent value="regions">
             <Card>
               <CardHeader>
-                <CardTitle>Available Regions</CardTitle>
+                <CardTitle>Regions Management</CardTitle>
                 <CardDescription>
-                  Configure the regions available for controls
+                  Configure regions available for assignment to processes and controls
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="flex h-[300px] items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg bg-muted/10">
-                  <p className="text-muted-foreground">Region configuration will be added here</p>
+              <CardContent className="space-y-6">
+                {/* Add New Region */}
+                <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
+                  <h3 className="font-medium text-sm">Add New Region</h3>
+                  <div className="grid gap-4">
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="new-region-name">Region Name (ID)</Label>
+                        <Input
+                          id="new-region-name"
+                          placeholder="EMEA"
+                          value={newRegionName}
+                          onChange={(e) => setNewRegionName(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">Internal identifier (uppercase, no spaces)</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-region-label">Display Label</Label>
+                        <Input
+                          id="new-region-label"
+                          placeholder="Europe, Middle East, and Africa"
+                          value={newRegionLabel}
+                          onChange={(e) => setNewRegionLabel(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">Human-readable label</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-region-icon">Icon (Optional)</Label>
+                        <Input
+                          id="new-region-icon"
+                          placeholder="🌍"
+                          value={newRegionIcon}
+                          onChange={(e) => setNewRegionIcon(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">Emoji or icon code</p>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={handleAddRegion}
+                      disabled={updateSettings.isPending}
+                      className="w-fit"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Region
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Existing Regions */}
+                <div className="space-y-3">
+                  <h3 className="font-medium text-sm">Current Regions</h3>
+                  {regions.length === 0 ? (
+                    <div className="text-center text-muted-foreground py-8 border-2 border-dashed rounded-lg">
+                      No regions configured yet. Add your first region above.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {regions.map((region, index) => (
+                        <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
+                          {editingRegionIndex === index ? (
+                            <div className="flex-1 grid grid-cols-3 gap-4">
+                              <div>
+                                <Input
+                                  value={region.name}
+                                  disabled
+                                  className="bg-muted"
+                                />
+                              </div>
+                              <div>
+                                <Input
+                                  value={editRegionLabel}
+                                  onChange={(e) => setEditRegionLabel(e.target.value)}
+                                  placeholder="Display Label"
+                                />
+                              </div>
+                              <div>
+                                <Input
+                                  value={editRegionIcon}
+                                  onChange={(e) => setEditRegionIcon(e.target.value)}
+                                  placeholder="Icon"
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-4">
+                              {region.icon && <span className="text-2xl">{region.icon}</span>}
+                              <div>
+                                <p className="font-medium">{region.label}</p>
+                                <p className="text-sm text-muted-foreground">{region.name}</p>
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            {editingRegionIndex === index ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleSaveEditRegion(index)}
+                                  disabled={updateSettings.isPending}
+                                >
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={handleCancelEditRegion}
+                                >
+                                  <XIcon className="h-4 w-4" />
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleStartEditRegion(index)}
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleDeleteRegion(index)}
+                                  disabled={updateSettings.isPending}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -293,15 +589,67 @@ export default function Settings() {
           <TabsContent value="general">
             <Card>
               <CardHeader>
-                <CardTitle>General Settings</CardTitle>
+                <CardTitle>Account Settings</CardTitle>
                 <CardDescription>
-                  Configure general application settings
+                  Manage your organization account information
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="flex h-[300px] items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg bg-muted/10">
-                  <p className="text-muted-foreground">General settings will be added here</p>
-                </div>
+              <CardContent className="space-y-4">
+                {isLoadingAccount ? (
+                  <div className="flex items-center justify-center h-40">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="account-name">Account Name</Label>
+                      <Input
+                        id="account-name"
+                        type="text"
+                        placeholder="Organization Name"
+                        value={accountName}
+                        onChange={(e) => setAccountName(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        The name of your organization
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="account-domain">Email Domain</Label>
+                      <Input
+                        id="account-domain"
+                        type="text"
+                        value={accountDomain}
+                        disabled
+                        className="bg-muted"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        All users with this email domain belong to this account (cannot be changed)
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Account ID</Label>
+                      <Input
+                        type="text"
+                        value={accountId}
+                        disabled
+                        className="bg-muted font-mono text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Unique identifier for this account
+                      </p>
+                    </div>
+
+                    <Button
+                      onClick={handleUpdateAccount}
+                      disabled={!accountName.trim()}
+                    >
+                      Save Account Settings
+                    </Button>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
