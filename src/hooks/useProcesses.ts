@@ -1,71 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { processesApi, ProcessWithSystems } from '@/lib/api';
 import type { Process } from '@/types/database';
-import { useAuth } from '@/contexts/AuthContext';
 
-export interface ProcessWithSystems extends Process {
-  systems?: Array<{
-    id: string;
-    system_name: string;
-  }>;
-}
+export type { ProcessWithSystems };
 
 export function useProcesses() {
   return useQuery({
     queryKey: ['processes'],
-    queryFn: async () => {
-      // First get all processes
-      const { data: processes, error: processError } = await supabase
-        .from('processes')
-        .select('*')
-        .order('process_name', { ascending: true });
-
-      if (processError) throw processError;
-
-      // For each process, get its associated systems
-      const processesWithSystems = await Promise.all(
-        (processes || []).map(async (process) => {
-          const { data: processSystems } = await supabase
-            .from('process_systems')
-            .select(`
-              system_id,
-              systems:system_id (
-                id,
-                system_name
-              )
-            `)
-            .eq('process_id', process.id);
-
-          return {
-            ...process,
-            systems: processSystems?.map(ps => ps.systems).filter(Boolean) || [],
-          } as ProcessWithSystems;
-        })
-      );
-
-      return processesWithSystems;
-    },
+    queryFn: () => processesApi.getAll(),
   });
 }
 
 export function useCreateProcess() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async (process: Omit<Process, 'id' | 'created_at' | 'modified_date' | 'modified_by'>) => {
-      const { data, error } = await supabase
-        .from('processes')
-        .insert({
-          ...process,
-          modified_by: user?.email || 'unknown',
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: (process: Omit<Process, 'id' | 'created_at' | 'modified_date' | 'modified_by'>) =>
+      processesApi.create(process),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['processes'] });
     },
@@ -74,24 +25,10 @@ export function useCreateProcess() {
 
 export function useUpdateProcess() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<Process> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('processes')
-        .update({
-          ...updates,
-          modified_by: user?.email || 'unknown',
-          modified_date: new Date().toISOString(),
-        })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: ({ id, ...updates }: Partial<Process> & { id: string }) =>
+      processesApi.update(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['processes'] });
     },
@@ -102,14 +39,7 @@ export function useDeleteProcess() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('processes')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => processesApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['processes'] });
     },
