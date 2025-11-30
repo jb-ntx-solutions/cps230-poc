@@ -42,13 +42,13 @@ serve(async (req) => {
           // Get associated controls
           const { data: controls } = await supabaseClient
             .from('controls')
-            .select('id')
+            .select('id, control_name')
             .eq('process_id', id)
 
           // Get associated critical operations
           const { data: criticalOperations } = await supabaseClient
             .from('critical_operations')
-            .select('id')
+            .select('id, operation_name')
             .eq('process_id', id)
 
           const processWithSystems = {
@@ -86,12 +86,12 @@ serve(async (req) => {
 
               const { data: controls } = await supabaseClient
                 .from('controls')
-                .select('id')
+                .select('id, control_name')
                 .eq('process_id', process.id)
 
               const { data: criticalOperations } = await supabaseClient
                 .from('critical_operations')
-                .select('id')
+                .select('id, operation_name')
                 .eq('process_id', process.id)
 
               return {
