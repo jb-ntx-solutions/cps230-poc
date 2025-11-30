@@ -80,9 +80,6 @@ export function BpmnCanvas({
     const config = getModelerConfig(userRole);
     const modeler = new BpmnModeler({
       container: containerRef.current,
-      keyboard: {
-        bindTo: document,
-      },
       ...config,
     });
 

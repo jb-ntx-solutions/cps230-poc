@@ -52,24 +52,45 @@ export function getModelerConfig(userRole: string) {
 
   // For basic users, disable all editing modules
   if (userRole === 'user') {
-    config.additionalModules = [
-      ...config.additionalModules,
-      {
-        // Disable move, resize, and other interactions
-        bendpoints: ['value', null],
-        move: ['value', null],
-        resize: ['value', null],
-        contextPad: ['value', null],
-        palette: ['value', null],
-        lassoTool: ['value', null],
-        handTool: ['value', null],
-        globalConnect: ['value', null],
-        distributeElements: ['value', null],
-        alignElements: ['value', null],
-        directEditing: ['value', null],
-        labelEditingProvider: ['value', null]
-      }
-    ];
+    config.additionalModules.push({
+      __init__: ['readOnlyProvider'],
+      readOnlyProvider: ['type', class ReadOnlyProvider {
+        constructor(eventBus: any, contextPad: any, dragging: any, directEditing: any, palette: any) {
+          // Prevent all editing operations by intercepting events
+          eventBus.on('element.click', 10000, (event: any) => {
+            // Allow selection but prevent editing
+            return event;
+          });
+
+          // Completely disable dragging
+          eventBus.on('element.mousedown', 10000, (event: any) => {
+            if (event.originalEvent.button === 0) {
+              return false; // Prevent left-click drag
+            }
+          });
+
+          // Disable all command stack operations
+          const commandEvents = [
+            'commandStack.shape.create.preExecute',
+            'commandStack.shape.delete.preExecute',
+            'commandStack.connection.create.preExecute',
+            'commandStack.connection.delete.preExecute',
+            'commandStack.elements.move.preExecute',
+            'commandStack.shape.resize.preExecute',
+            'commandStack.element.updateProperties.preExecute',
+            'commandStack.connection.updateWaypoints.preExecute'
+          ];
+
+          commandEvents.forEach(eventName => {
+            eventBus.on(eventName, 10000, () => false);
+          });
+
+          // Disable context pad and palette
+          contextPad.registerProvider({ getContextPadEntries: () => ({}) });
+          palette.registerProvider({ getPaletteEntries: () => ({}) });
+        }
+      }]
+    });
   }
 
   return config;
