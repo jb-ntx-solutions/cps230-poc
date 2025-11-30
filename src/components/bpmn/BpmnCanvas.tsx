@@ -2,122 +2,108 @@ import { useEffect, useRef, useState } from 'react';
 import BpmnModeler from 'bpmn-js/lib/Modeler';
 import 'bpmn-js/dist/assets/diagram-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
+import { getModelerConfig } from './modeler';
+import { ProcessPropertiesPanel } from './ProcessPropertiesPanel';
+import { FilterState } from './utils/highlightCalculator';
+import { generateBpmnFromProcesses, generateEmptyDiagram } from './utils/bpmnXmlGenerator';
 
-interface Process {
+interface ProcessData {
   id: string;
   process_name: string;
   process_unique_id: string;
-  input_processes?: string[];
-  output_processes?: string[];
-  canvas_position?: { x: number; y: number };
+  pm_process_id: number;
+  owner_username: string | null;
+  input_processes?: string[] | null;
+  output_processes?: string[] | null;
+  canvas_position?: { x: number; y: number } | null;
+  regions?: string[] | null;
+  systems?: Array<{ id: string; system_name: string }>;
+  controls?: Array<{ id: string }>;
+  criticalOperations?: Array<{ id: string }>;
 }
 
 interface BpmnCanvasProps {
-  processes: Process[];
-  onSavePositions?: (positions: Record<string, { x: number; y: number }>) => void;
+  processes: ProcessData[];
+  userRole: 'promaster' | 'business_analyst' | 'user';
+  filters: FilterState;
+  onSave?: () => void;
+  isSaving?: boolean;
 }
 
-// Generate BPMN XML from processes
-function generateBpmnXml(processes: Process[]): string {
-  const processElements = processes.map((process, index) => {
-    const x = process.canvas_position?.x || 100 + (index % 5) * 200;
-    const y = process.canvas_position?.y || 100 + Math.floor(index / 5) * 150;
-
-    return `
-      <bpmn:task id="${process.id}" name="${process.process_name}">
-        <bpmn:incoming>${process.input_processes?.map(id => `flow_${id}_${process.id}`).join(' ') || ''}</bpmn:incoming>
-        <bpmn:outgoing>${process.output_processes?.map(id => `flow_${process.id}_${id}`).join(' ') || ''}</bpmn:outgoing>
-      </bpmn:task>
-      <bpmndi:BPMNShape id="${process.id}_di" bpmnElement="${process.id}">
-        <dc:Bounds x="${x}" y="${y}" width="100" height="80" />
-      </bpmndi:BPMNShape>
-    `;
-  }).join('\n');
-
-  // Generate sequence flows
-  const flows: string[] = [];
-  const flowDiagrams: string[] = [];
-
-  processes.forEach(process => {
-    process.output_processes?.forEach(targetId => {
-      const flowId = `flow_${process.id}_${targetId}`;
-      flows.push(`
-        <bpmn:sequenceFlow id="${flowId}" sourceRef="${process.id}" targetRef="${targetId}" />
-      `);
-
-      flowDiagrams.push(`
-        <bpmndi:BPMNEdge id="${flowId}_di" bpmnElement="${flowId}">
-          <di:waypoint x="0" y="0" />
-          <di:waypoint x="0" y="0" />
-        </bpmndi:BPMNEdge>
-      `);
-    });
-  });
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-                   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-                   id="Definitions_1"
-                   targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_1" isExecutable="false">
-    ${processElements}
-    ${flows.join('\n')}
-  </bpmn:process>
-  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
-      ${flowDiagrams.join('\n')}
-    </bpmndi:BPMNPlane>
-  </bpmndi:BPMNDiagram>
-</bpmn:definitions>`;
-}
-
-export function BpmnCanvas({ processes, onSavePositions }: BpmnCanvasProps) {
+export function BpmnCanvas({
+  processes,
+  userRole,
+  filters,
+  onSave,
+  isSaving
+}: BpmnCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const modelerRef = useRef<BpmnModeler | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedElement, setSelectedElement] = useState<any>(null);
+  const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
 
+  // Initialize BPMN modeler
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Initialize BPMN modeler
+    const config = getModelerConfig(userRole);
     const modeler = new BpmnModeler({
       container: containerRef.current,
       keyboard: {
         bindTo: document,
       },
+      ...config,
     });
 
     modelerRef.current = modeler;
 
-    // Generate and import BPMN diagram
-    const bpmnXml = generateBpmnXml(processes);
+    // Generate initial BPMN XML
+    const bpmnXml = processes.length > 0
+      ? generateBpmnFromProcesses(processes)
+      : generateEmptyDiagram();
 
     modeler.importXML(bpmnXml).then(() => {
       const canvas = modeler.get('canvas') as any;
       canvas.zoom('fit-viewport');
+
+      // Set read-only mode for users
+      if (userRole === 'user') {
+        const modeling = modeler.get('modeling') as any;
+        const eventBus = modeler.get('eventBus') as any;
+
+        // Prevent all editing operations
+        eventBus.on('commandStack.shape.create.preExecute', 10000, () => false);
+        eventBus.on('commandStack.shape.delete.preExecute', 10000, () => false);
+        eventBus.on('commandStack.connection.create.preExecute', 10000, () => false);
+        eventBus.on('commandStack.connection.delete.preExecute', 10000, () => false);
+        eventBus.on('commandStack.elements.move.preExecute', 10000, () => false);
+      }
     }).catch((err: Error) => {
       console.error('Error importing BPMN diagram:', err);
       setError('Failed to load process diagram');
     });
 
-    // Listen for element position changes
+    // Listen for element selection
     const eventBus = modeler.get('eventBus') as any;
-    eventBus.on('element.changed', () => {
-      if (onSavePositions) {
-        // Extract positions from the diagram
-        const elementRegistry = modeler.get('elementRegistry') as any;
-        const positions: Record<string, { x: number; y: number }> = {};
+    eventBus.on('selection.changed', (event: any) => {
+      const { newSelection } = event;
 
-        processes.forEach(process => {
-          const element = elementRegistry.get(process.id);
-          if (element && element.x !== undefined && element.y !== undefined) {
-            positions[process.id] = { x: element.x, y: element.y };
-          }
-        });
+      if (newSelection.length === 1) {
+        const element = newSelection[0];
+        setSelectedElement(element);
 
-        onSavePositions(positions);
+        // Extract process ID from Call Activity
+        if (element.type === 'bpmn:CallActivity') {
+          const modeling = modeler.get('modeling') as any;
+          const processId = element.businessObject.calledElement;
+          setSelectedProcessId(processId || null);
+        } else {
+          setSelectedProcessId(null);
+        }
+      } else {
+        setSelectedElement(null);
+        setSelectedProcessId(null);
       }
     });
 
@@ -125,7 +111,132 @@ export function BpmnCanvas({ processes, onSavePositions }: BpmnCanvasProps) {
     return () => {
       modeler.destroy();
     };
-  }, [processes, onSavePositions]);
+  }, [processes, userRole]);
+
+  // Apply highlighting when filters change
+  useEffect(() => {
+    if (!modelerRef.current) return;
+
+    const canvas = modelerRef.current.get('canvas') as any;
+    const elementRegistry = modelerRef.current.get('elementRegistry') as any;
+    const overlays = modelerRef.current.get('overlays') as any;
+
+    // Clear all existing overlays
+    overlays.clear();
+
+    // Reset all element styles
+    elementRegistry.forEach((element: any) => {
+      if (element.type === 'bpmn:CallActivity') {
+        canvas.removeMarker(element, 'highlight-system');
+        canvas.removeMarker(element, 'highlight-control');
+        canvas.removeMarker(element, 'highlight-critical');
+      }
+    });
+
+    // Apply new highlighting based on filters
+    const hasActiveFilters =
+      filters.systems.length > 0 ||
+      filters.regions.length > 0 ||
+      filters.controls.length > 0 ||
+      filters.criticalOperations.length > 0;
+
+    if (!hasActiveFilters) return;
+
+    elementRegistry.forEach((element: any) => {
+      if (element.type !== 'bpmn:CallActivity') return;
+
+      const processId = element.businessObject.calledElement;
+      const processData = processes.find(p => p.id === processId);
+
+      if (!processData) return;
+
+      // Priority: Critical Operations > Controls > Systems
+      let applied = false;
+
+      // Check Critical Operations (RED border - highest priority)
+      if (!applied && filters.criticalOperations.length > 0) {
+        const matchesCriticalOp = processData.criticalOperations?.some(co =>
+          filters.criticalOperations.includes(co.id)
+        );
+
+        if (matchesCriticalOp) {
+          canvas.addMarker(element, 'highlight-critical');
+          applied = true;
+        }
+      }
+
+      // Check Controls (BLUE border - second priority)
+      if (!applied && filters.controls.length > 0) {
+        const matchesControl = processData.controls?.some(ctrl =>
+          filters.controls.includes(ctrl.id)
+        );
+
+        if (matchesControl) {
+          canvas.addMarker(element, 'highlight-control');
+          applied = true;
+        }
+      }
+
+      // Check Systems (GREEN border - third priority)
+      if (!applied && filters.systems.length > 0) {
+        const matchesSystem = processData.systems?.some(sys =>
+          filters.systems.includes(sys.id)
+        );
+
+        if (matchesSystem) {
+          canvas.addMarker(element, 'highlight-system');
+          applied = true;
+        }
+      }
+
+      // Check Regions (OVERLAY - independent of border)
+      if (filters.regions.length > 0 && processData.regions) {
+        const matchedRegions = processData.regions.filter(region =>
+          filters.regions.includes(region)
+        );
+
+        if (matchedRegions.length > 0) {
+          const regionHtml = `
+            <div style="
+              background: rgba(59, 130, 246, 0.9);
+              color: white;
+              padding: 2px 6px;
+              border-radius: 3px;
+              font-size: 10px;
+              font-weight: 500;
+              white-space: nowrap;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            ">
+              ${matchedRegions.join(', ')}
+            </div>
+          `;
+
+          overlays.add(element, {
+            position: { top: -5, right: 10 },
+            html: regionHtml
+          });
+        }
+      }
+    });
+  }, [filters, processes]);
+
+  // Handle process linking from property panel
+  const handleProcessLink = (processId: string) => {
+    if (!modelerRef.current || !selectedElement) return;
+
+    const modeling = modelerRef.current.get('modeling') as any;
+    const process = processes.find(p => p.id === processId);
+
+    if (!process) return;
+
+    // Update Call Activity with process information
+    modeling.updateProperties(selectedElement, {
+      name: process.process_name,
+      calledElement: process.id
+    });
+
+    setSelectedProcessId(processId);
+  };
 
   if (error) {
     return (
@@ -135,11 +246,48 @@ export function BpmnCanvas({ processes, onSavePositions }: BpmnCanvasProps) {
     );
   }
 
+  const canEdit = userRole === 'promaster' || userRole === 'business_analyst';
+
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full"
-      style={{ minHeight: '600px' }}
-    />
+    <div className="flex h-full">
+      {/* BPMN Canvas */}
+      <div className="flex-1 relative">
+        <div
+          ref={containerRef}
+          className="w-full h-full"
+        />
+
+        {/* Add custom CSS for highlighting */}
+        <style>{`
+          .highlight-system .djs-visual > :nth-child(1) {
+            stroke: #10b981 !important;
+            stroke-width: 4 !important;
+          }
+
+          .highlight-control .djs-visual > :nth-child(1) {
+            stroke: #3b82f6 !important;
+            stroke-width: 4 !important;
+          }
+
+          .highlight-critical .djs-visual > :nth-child(1) {
+            stroke: #ef4444 !important;
+            stroke-width: 4 !important;
+          }
+        `}</style>
+      </div>
+
+      {/* Properties Panel (only for editors when element is selected) */}
+      {canEdit && selectedElement?.type === 'bpmn:CallActivity' && (
+        <ProcessPropertiesPanel
+          selectedProcessId={selectedProcessId}
+          processes={processes}
+          onProcessLink={handleProcessLink}
+          onClose={() => {
+            const selection = modelerRef.current?.get('selection') as any;
+            selection?.deselect(selectedElement);
+          }}
+        />
+      )}
+    </div>
   );
 }
