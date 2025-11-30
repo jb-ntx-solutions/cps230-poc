@@ -158,9 +158,24 @@ async function getSearchToken(config: ProcessManagerConfig, siteToken: string): 
     throw new Error(`Failed to get search token: ${response.statusText}`)
   }
 
-  const data: SearchAuthResponse = await response.json()
-  console.log(`Search token received. Token length: ${data.access_token?.length || 0}`)
-  return data.access_token
+  const responseText = await response.text()
+  console.log(`Search token raw response: ${responseText.substring(0, 200)}`)
+
+  // Try parsing as JSON first
+  let searchToken: string
+  try {
+    const data = JSON.parse(responseText)
+    console.log(`Parsed JSON. Keys: ${Object.keys(data).join(', ')}`)
+    searchToken = data.Message || data.access_token || data.token || data.Token || data.AccessToken || responseText
+  } catch (e) {
+    // If not JSON, the response might be the token itself
+    console.log(`Not JSON, using raw response as token`)
+    searchToken = responseText
+  }
+
+  const tokenPreview = searchToken ? searchToken.substring(0, 20) + '...' : 'null'
+  console.log(`Search token final. Token length: ${searchToken?.length || 0}, Preview: ${tokenPreview}`)
+  return searchToken
 }
 
 // Search for processes with CPS230 tag using Search API
@@ -176,7 +191,10 @@ async function searchCPS230Processes(
   let hasMore = true
 
   while (hasMore) {
-    const pagedUrl = `${searchUrl}&PageNumber=${pageNumber}&PageSize=100`
+    const pagedUrl = `${searchUrl}&pageNumber=${pageNumber}&PageSize=100`
+    const tokenPreview = searchToken ? searchToken.substring(0, 20) + '...' : 'null'
+
+    console.log(`Calling search API. Page: ${pageNumber}, Token preview: ${tokenPreview}`)
 
     const response = await fetch(pagedUrl, {
       method: 'GET',
@@ -187,7 +205,7 @@ async function searchCPS230Processes(
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error(`Search API request failed. URL: ${pagedUrl}, Status: ${response.status}, Body: ${errorText}`)
+      console.error(`Search API request failed. URL: ${pagedUrl}, Status: ${response.status}, Body: ${errorText}, Token preview: ${tokenPreview}`)
       throw new Error(`Search API failed: ${response.statusText}`)
     }
 
