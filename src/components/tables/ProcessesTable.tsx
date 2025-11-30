@@ -112,6 +112,25 @@ export function ProcessesTable() {
       },
     },
     {
+      accessorKey: 'regions',
+      header: 'Regions',
+      cell: ({ row }) => {
+        const regions = row.original.regions || [];
+        if (regions.length === 0) {
+          return <span className="text-muted-foreground text-sm">—</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1">
+            {regions.map((region) => (
+              <Badge key={region} variant="outline" className="text-xs">
+                {region}
+              </Badge>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
       accessorKey: 'modified_date',
       header: 'Last Modified',
       cell: ({ row }) => {
