@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react';
 import { FilterState } from '@/components/bpmn/utils/highlightCalculator';
 import { useAuth } from '@/contexts/AuthContext';
 import { systemsApi, processesApi, controlsApi, criticalOperationsApi } from '@/lib/api';
+import { useSettings } from '@/hooks/useSettings';
 
 interface Process {
   id: string;
@@ -37,6 +38,12 @@ interface CriticalOperation {
   operation_name: string;
 }
 
+interface Region {
+  name: string;
+  label: string;
+  icon?: string;
+}
+
 export default function Dashboard() {
   const { profile } = useAuth();
   const [filters, setFilters] = useState<FilterState>({
@@ -45,6 +52,9 @@ export default function Dashboard() {
     controls: [],
     criticalOperations: []
   });
+
+  // Fetch regions from settings
+  const { data: settings = [] } = useSettings(['regions']);
 
   // Fetch all systems
   const { data: systems, isLoading: systemsLoading } = useQuery({
@@ -70,12 +80,9 @@ export default function Dashboard() {
     queryFn: () => criticalOperationsApi.getAll(),
   });
 
-  // Extract unique regions from processes
-  const regions = Array.from(
-    new Set(
-      processes?.flatMap(p => p.regions || []).filter(Boolean) || []
-    )
-  ).sort();
+  // Get regions from settings instead of extracting from processes
+  const availableRegions = (settings.find(s => s.key === 'regions')?.value as Region[]) || [];
+  const regions = availableRegions.map(r => r.name);
 
   const isLoading = systemsLoading || processesLoading || controlsLoading || criticalOpsLoading;
 

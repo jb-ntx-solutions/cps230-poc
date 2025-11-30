@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import BpmnModeler from 'bpmn-js/lib/Modeler';
 import 'bpmn-js/dist/assets/diagram-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
@@ -6,6 +6,10 @@ import { getModelerConfig } from './modeler';
 import { ProcessPropertiesPanel } from './ProcessPropertiesPanel';
 import { FilterState } from './utils/highlightCalculator';
 import { generateBpmnFromProcesses, generateEmptyDiagram } from './utils/bpmnXmlGenerator';
+import { Button } from '@/components/ui/button';
+import { Save, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { useSettings, useUpdateSetting } from '@/hooks/useSettings';
 
 interface ProcessData {
   id: string;
@@ -26,22 +30,48 @@ interface BpmnCanvasProps {
   processes: ProcessData[];
   userRole: 'promaster' | 'business_analyst' | 'user';
   filters: FilterState;
-  onSave?: () => void;
-  isSaving?: boolean;
 }
 
 export function BpmnCanvas({
   processes,
   userRole,
-  filters,
-  onSave,
-  isSaving
+  filters
 }: BpmnCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const modelerRef = useRef<BpmnModeler | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedElement, setSelectedElement] = useState<any>(null);
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const { data: settings = [] } = useSettings(['bpmn_diagram']);
+  const updateSettings = useUpdateSetting();
+
+  const savedDiagramXml = (settings.find(s => s.key === 'bpmn_diagram')?.value as { xml: string })?.xml;
+
+  // Save diagram function
+  const saveDiagram = useCallback(async () => {
+    if (!modelerRef.current) return;
+
+    try {
+      setIsSaving(true);
+      const { xml } = await modelerRef.current.saveXML({ format: true });
+
+      await updateSettings.mutateAsync([{
+        key: 'bpmn_diagram',
+        value: { xml }
+      }]);
+
+      setHasUnsavedChanges(false);
+      toast.success('Diagram saved successfully');
+    } catch (err) {
+      console.error('Error saving diagram:', err);
+      toast.error('Failed to save diagram');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [updateSettings]);
 
   // Initialize BPMN modeler
   useEffect(() => {
@@ -58,10 +88,18 @@ export function BpmnCanvas({
 
     modelerRef.current = modeler;
 
-    // Generate initial BPMN XML
-    const bpmnXml = processes.length > 0
-      ? generateBpmnFromProcesses(processes)
-      : generateEmptyDiagram();
+    // Determine which BPMN XML to load
+    let bpmnXml: string;
+    if (savedDiagramXml) {
+      // Use saved diagram if available
+      bpmnXml = savedDiagramXml;
+    } else if (processes.length > 0) {
+      // Generate from processes if no saved diagram (initial state)
+      bpmnXml = generateBpmnFromProcesses(processes);
+    } else {
+      // Empty diagram
+      bpmnXml = generateEmptyDiagram();
+    }
 
     modeler.importXML(bpmnXml).then(() => {
       const canvas = modeler.get('canvas') as any;
@@ -107,11 +145,18 @@ export function BpmnCanvas({
       }
     });
 
+    // Track changes for unsaved changes indicator
+    if (userRole !== 'user') {
+      eventBus.on('commandStack.changed', () => {
+        setHasUnsavedChanges(true);
+      });
+    }
+
     // Cleanup
     return () => {
       modeler.destroy();
     };
-  }, [processes, userRole]);
+  }, [savedDiagramXml, processes, userRole]);
 
   // Apply highlighting when filters change
   useEffect(() => {
@@ -252,6 +297,30 @@ export function BpmnCanvas({
     <div className="flex h-full">
       {/* BPMN Canvas */}
       <div className="flex-1 relative">
+        {/* Save Button - only show for editors */}
+        {canEdit && (
+          <div className="absolute top-4 right-4 z-10 flex gap-2">
+            <Button
+              onClick={saveDiagram}
+              disabled={isSaving || !hasUnsavedChanges}
+              size="sm"
+              className="shadow-lg"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  {hasUnsavedChanges ? 'Save Diagram' : 'Saved'}
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+
         <div
           ref={containerRef}
           className="w-full h-full"

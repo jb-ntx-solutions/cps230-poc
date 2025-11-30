@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   Dialog,
@@ -12,8 +12,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import type { Process } from '@/types/database';
 import { useCreateProcess, useUpdateProcess } from '@/hooks/useProcesses';
+import { useSettings } from '@/hooks/useSettings';
 import { toast } from 'sonner';
 
 interface ProcessDialogProps {
@@ -28,9 +31,18 @@ interface ProcessFormData {
   owner_username: string;
 }
 
+interface Region {
+  name: string;
+  label: string;
+  icon?: string;
+}
+
 export function ProcessDialog({ open, onOpenChange, process }: ProcessDialogProps) {
   const createProcess = useCreateProcess();
   const updateProcess = useUpdateProcess();
+  const { data: settings = [] } = useSettings(['regions']);
+
+  const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
 
   const {
     register,
@@ -45,6 +57,9 @@ export function ProcessDialog({ open, onOpenChange, process }: ProcessDialogProp
     },
   });
 
+  // Get available regions from settings
+  const availableRegions = (settings.find(s => s.key === 'regions')?.value as Region[]) || [];
+
   // Reset form when dialog opens with process data
   useEffect(() => {
     if (open && process) {
@@ -53,12 +68,14 @@ export function ProcessDialog({ open, onOpenChange, process }: ProcessDialogProp
         process_unique_id: process.process_unique_id,
         owner_username: process.owner_username || '',
       });
+      setSelectedRegions(process.regions || []);
     } else if (open) {
       reset({
         process_name: '',
         process_unique_id: '',
         owner_username: '',
       });
+      setSelectedRegions([]);
     }
   }, [open, process, reset]);
 
@@ -70,6 +87,7 @@ export function ProcessDialog({ open, onOpenChange, process }: ProcessDialogProp
           id: process.id,
           ...data,
           owner_username: data.owner_username || null,
+          regions: selectedRegions.length > 0 ? selectedRegions : null,
         });
         toast.success('Process updated successfully');
       } else {
@@ -81,6 +99,7 @@ export function ProcessDialog({ open, onOpenChange, process }: ProcessDialogProp
           output_processes: null,
           canvas_position: null,
           metadata: null,
+          regions: selectedRegions.length > 0 ? selectedRegions : null,
         });
         toast.success('Process created successfully');
       }
@@ -89,6 +108,14 @@ export function ProcessDialog({ open, onOpenChange, process }: ProcessDialogProp
       toast.error(process ? 'Failed to update process' : 'Failed to create process');
       console.error(error);
     }
+  };
+
+  const handleRegionToggle = (regionName: string) => {
+    setSelectedRegions(prev =>
+      prev.includes(regionName)
+        ? prev.filter(r => r !== regionName)
+        : [...prev, regionName]
+    );
   };
 
   return (
@@ -146,6 +173,47 @@ export function ProcessDialog({ open, onOpenChange, process }: ProcessDialogProp
                 {...register('owner_username')}
                 placeholder="Enter owner username (optional)"
               />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Regions</Label>
+              {availableRegions.length > 0 ? (
+                <div className="space-y-2">
+                  {availableRegions.map((region) => (
+                    <div key={region.name} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`region-${region.name}`}
+                        checked={selectedRegions.includes(region.name)}
+                        onCheckedChange={() => handleRegionToggle(region.name)}
+                      />
+                      <label
+                        htmlFor={`region-${region.name}`}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        {region.icon && <span className="mr-1">{region.icon}</span>}
+                        {region.label}
+                      </label>
+                    </div>
+                  ))}
+                  {selectedRegions.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-2">
+                      {selectedRegions.map((regionName) => {
+                        const region = availableRegions.find(r => r.name === regionName);
+                        return (
+                          <Badge key={regionName} variant="outline" className="text-xs">
+                            {region?.icon && <span className="mr-1">{region.icon}</span>}
+                            {region?.label || regionName}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No regions configured. Add regions in Settings to assign them to processes.
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
