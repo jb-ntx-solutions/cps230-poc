@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { System, Process, Control, CriticalOperation } from '@/types/database'
+import type { System, Process, Control, CriticalOperation, Setting, UserProfile, SyncHistory } from '@/types/database'
 
 // Use /data/v1 which will be rewritten by Vercel to Supabase Edge Functions
 // This hides the Supabase URL from the client
@@ -198,5 +198,97 @@ export const criticalOperationsApi = {
     await apiFetch<{ success: boolean }>(`critical-operations?id=${id}`, {
       method: 'DELETE',
     })
+  },
+}
+
+// ============================================================================
+// SETTINGS API
+// ============================================================================
+
+export const settingsApi = {
+  getAll: async (keys?: string[]): Promise<Setting[]> => {
+    const queryParams = keys && keys.length > 0 ? `?keys=${keys.join(',')}` : ''
+    const response = await apiFetch<{ data: Setting[] }>(`settings${queryParams}`)
+    return response.data
+  },
+
+  upsert: async (settings: Array<{ key: string; value: any }>): Promise<void> => {
+    await apiFetch<{ success: boolean }>('settings', {
+      method: 'POST',
+      body: JSON.stringify({ settings }),
+    })
+  },
+}
+
+// ============================================================================
+// USER PROFILES API
+// ============================================================================
+
+export const userProfilesApi = {
+  getAll: async (): Promise<UserProfile[]> => {
+    const response = await apiFetch<{ data: UserProfile[] }>('user-profiles')
+    return response.data
+  },
+
+  getById: async (id: string): Promise<UserProfile> => {
+    const response = await apiFetch<{ data: UserProfile }>(`user-profiles?id=${id}`)
+    return response.data
+  },
+
+  getByUserId: async (userId: string): Promise<UserProfile> => {
+    const response = await apiFetch<{ data: UserProfile }>(`user-profiles?user_id=${userId}`)
+    return response.data
+  },
+
+  update: async (id: string, updates: { full_name?: string | null; role?: string }): Promise<UserProfile> => {
+    const response = await apiFetch<{ data: UserProfile }>(`user-profiles?id=${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    })
+    return response.data
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await apiFetch<{ success: boolean }>(`user-profiles?id=${id}`, {
+      method: 'DELETE',
+    })
+  },
+}
+
+// ============================================================================
+// SYNC HISTORY API
+// ============================================================================
+
+export const syncHistoryApi = {
+  getAll: async (limit?: number): Promise<SyncHistory[]> => {
+    const queryParams = limit ? `?limit=${limit}` : ''
+    const response = await apiFetch<{ data: SyncHistory[] }>(`sync-history${queryParams}`)
+    return response.data
+  },
+
+  getLatest: async (): Promise<SyncHistory | null> => {
+    const response = await apiFetch<{ data: SyncHistory | null }>('sync-history?latest=true')
+    return response.data
+  },
+
+  cancel: async (id: string): Promise<SyncHistory> => {
+    const response = await apiFetch<{ data: SyncHistory }>(`sync-history?id=${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'cancelled' }),
+    })
+    return response.data
+  },
+}
+
+// ============================================================================
+// SYNC PROCESS MANAGER API
+// ============================================================================
+
+export const syncProcessManagerApi = {
+  sync: async (): Promise<{ success: boolean; message: string; syncId: string }> => {
+    const response = await apiFetch<{ success: boolean; message: string; syncId: string }>('sync-process-manager', {
+      method: 'POST',
+    })
+    return response
   },
 }

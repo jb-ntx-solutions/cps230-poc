@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { userProfilesApi } from '@/lib/api';
 import { UserProfile, UserRole } from '@/types/database';
 import { Pencil, Trash2, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -64,13 +65,7 @@ export default function Users() {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('account_id', profile.account_id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const data = await userProfilesApi.getAll();
       setUsers(data || []);
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -143,15 +138,10 @@ export default function Users() {
     if (!selectedUser) return;
 
     try {
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({
-          full_name: editFormData.full_name || null,
-          role: editFormData.role,
-        })
-        .eq('id', selectedUser.id);
-
-      if (error) throw error;
+      await userProfilesApi.update(selectedUser.id, {
+        full_name: editFormData.full_name || null,
+        role: editFormData.role,
+      });
 
       toast({
         title: 'Success',
@@ -176,12 +166,7 @@ export default function Users() {
     if (!selectedUser) return;
 
     try {
-      // Use the database function to delete the user profile
-      const { error } = await supabase.rpc('delete_user_complete', {
-        p_user_profile_id: selectedUser.id,
-      });
-
-      if (error) throw error;
+      await userProfilesApi.delete(selectedUser.id);
 
       toast({
         title: 'Success',
