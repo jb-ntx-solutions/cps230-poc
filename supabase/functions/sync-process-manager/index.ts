@@ -106,7 +106,7 @@ function getSearchEndpoint(siteUrl: string): string {
     'us.promapp.com': 'prd-wus-sch.promapp.io',
     'ca.promapp.com': 'prd-cac-sch.promapp.io',
     'eu.promapp.com': 'prd-neu-sch.promapp.io',
-    'au.promapp.com': 'prd-aus-sch.promapp.io',
+    'au.promapp.com': 'prd-au-sch.promapp.io',
   }
 
   return regionMap[siteUrl] || 'prd-wus-sch.promapp.io' // Default to US

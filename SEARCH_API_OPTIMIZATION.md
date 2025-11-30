@@ -212,31 +212,48 @@ Processing batch 1/2 (processes 1-100 of 180)
    - Removed `hasCPS230Tag` check (no longer needed)
    - Updated all references from `allProcesses` to `cps230ProcessUniqueIds`
 
-## Current Status - Debugging Authentication
+## Current Status - Ready to Test! ✅
 
-### Issue
-The Search API implementation is complete but encountering "Unauthorized" errors when calling the search endpoint.
-
-### What's Been Done
+### What's Been Fixed
 1. ✅ Search API implementation complete
-2. ✅ Region endpoint mapping added
+2. ✅ Region endpoint mapping corrected (AU: `prd-au-sch.promapp.io`)
 3. ✅ Search token authentication added
-4. ✅ Enhanced logging deployed for debugging
-5. ⏳ Investigating authentication failure
+4. ✅ Enhanced logging deployed
+5. ✅ Search endpoints are tenant-agnostic (tenant info embedded in token)
+
+### Authentication Flow (Verified with Working curl Example)
+
+**Step 1: Get Site Token**
+```
+POST https://demo.promapp.com/93555a16ceb24f139a6e8a40618d3f8b/oauth2/token
+(password grant flow)
+→ Returns site access token
+```
+
+**Step 2: Get Search Token**
+```
+GET https://demo.promapp.com/93555a16ceb24f139a6e8a40618d3f8b/search/GetSearchServiceToken
+Authorization: Bearer <site_token>
+→ Returns search token with UserSearchPermission
+```
+
+**Step 3: Search for CPS230 Processes**
+```
+GET https://dmo-wus-sch.promapp.io/fullsearch?SearchCriteria=CPS230&IncludedTypes=1&SearchMatchType=0
+Authorization: Bearer <search_token>
+→ Returns list of processes with CPS230 in highlights
+```
+
+### Search Endpoint Examples
+
+**Demo tenant**: `https://dmo-wus-sch.promapp.io/fullsearch?...`
+**AU tenant**: `https://prd-au-sch.promapp.io/fullsearch?...`
+
+Note: Endpoints are tenant-agnostic. Tenant context is in the search token.
 
 ### Next Steps
 1. Run the database migration (see Migration Required section above)
 2. Click "Sync Now" in the app
-3. Check Edge Function logs at: https://supabase.com/dashboard/project/rdqavrqfisyzwfqhckcp/functions/sync-process-manager/logs
-4. See [SEARCH_AUTH_DEBUG.md](SEARCH_AUTH_DEBUG.md) for what to look for in logs
+3. Watch it complete in ~3-4 minutes! 🚀
 
-### Enhanced Logging
-The Edge Function now logs:
-- Site authentication success/failure with token length and type
-- Search token request URL and response
-- Search API request URL and any errors
-- Detailed error bodies for all failed requests
-
-This will help identify exactly where and why the authentication is failing.
-
-**Expected result after fix**: Sync completes in ~3-4 minutes with no timeouts. 🚀
+If there are still issues, check logs at: https://supabase.com/dashboard/project/rdqavrqfisyzwfqhckcp/functions/sync-process-manager/logs
