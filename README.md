@@ -13,11 +13,17 @@ This application enables organizations to:
 
 ## Features
 
-### 🎯 Dashboard
-- Interactive BPMN.js canvas for process visualization
-- Drag-and-drop process arrangement (Business Analysts and Promasters)
-- Visual representation of process connections and dependencies
-- Filter by Critical Operations, Systems, and Regions
+### 🎯 Dashboard - BPMN Process Modeler
+- Full BPMN modeler with Call Activities for process linking
+- Role-based editing: Promaster/Business Analyst can edit, Users read-only
+- Property panel for linking Call Activities to processes
+- Multi-dimensional filtering with visual highlighting:
+  - Systems (green border)
+  - Regions (blue overlay badges)
+  - Controls (blue border)
+  - Critical Operations (red border - highest priority)
+- Click Call Activities to open in Nintex Process Manager
+- Maximized canvas space with intuitive filters sidebar
 
 ### 📊 Data Management
 - **Processes**: View and manage processes from Nintex Process Manager
@@ -43,11 +49,11 @@ This application enables organizations to:
 - **UI Components**: shadcn/ui (based on Radix UI)
 - **Styling**: Tailwind CSS with Nintex Textura design system
 - **Font**: Plus Jakarta Sans
-- **Icons**: Streamline Sharp (to be integrated)
-- **Process Visualization**: BPMN.js
-- **Database & Auth**: Supabase (PostgreSQL + Auth)
-- **Deployment**: Vercel
-- **State Management**: TanStack Query (React Query)
+- **Process Visualization**: BPMN.js (v18.9.1) with custom palette and properties panel
+- **Backend API**: Supabase Edge Functions (Deno)
+- **Database & Auth**: Supabase (PostgreSQL + Row Level Security)
+- **Deployment**: Vercel (Frontend) + Supabase (Edge Functions)
+- **State Management**: TanStack Query (React Query v5)
 
 ## Design System
 
@@ -151,6 +157,17 @@ cps230-poc/
 ├── src/
 │   ├── components/        # Reusable components
 │   │   ├── ui/           # shadcn/ui components
+│   │   ├── bpmn/         # BPMN modeler components
+│   │   │   ├── BpmnCanvas.tsx
+│   │   │   ├── FiltersSidebar.tsx
+│   │   │   ├── ProcessPropertiesPanel.tsx
+│   │   │   ├── modeler/  # Custom BPMN modules
+│   │   │   │   ├── CustomPaletteProvider.ts
+│   │   │   │   ├── CustomContextPadProvider.ts
+│   │   │   │   └── index.ts
+│   │   │   └── utils/    # BPMN utilities
+│   │   │       ├── bpmnXmlGenerator.ts
+│   │   │       └── highlightCalculator.ts
 │   │   ├── AppLayout.tsx # Main app layout with sidebar
 │   │   └── ProtectedRoute.tsx
 │   ├── contexts/         # React contexts
@@ -158,6 +175,7 @@ cps230-poc/
 │   ├── hooks/            # Custom React hooks
 │   ├── lib/              # Utility functions
 │   │   ├── supabase.ts  # Supabase client
+│   │   ├── api.ts       # API layer (Edge Functions)
 │   │   └── utils.ts     # Helper functions
 │   ├── pages/           # Page components
 │   │   ├── Dashboard.tsx
@@ -172,14 +190,26 @@ cps230-poc/
 │   ├── index.css        # Global styles and design system
 │   └── main.tsx         # App entry point
 ├── supabase/
+│   ├── functions/       # Edge Functions (API layer)
+│   │   ├── _shared/     # Shared utilities (cors, auth)
+│   │   ├── systems/
+│   │   ├── processes/
+│   │   ├── controls/
+│   │   ├── critical-operations/
+│   │   ├── settings/
+│   │   ├── user-profiles/
+│   │   ├── sync-history/
+│   │   └── sync-process-manager/
 │   ├── schema.sql       # Database schema
 │   └── README.md        # Database setup instructions
 ├── public/              # Static assets
+│   └── favicon.ico      # Nintex logo
 ├── References/          # Reference materials
 │   ├── Documents/       # PDF and Excel references
 │   └── Images/          # Design reference screenshots
 ├── .env.example         # Environment variables template
-├── vercel.json          # Vercel configuration
+├── vercel.json          # Vercel configuration with API rewrites
+├── DASHBOARD_ENHANCEMENT_PLAN.md
 └── package.json         # Dependencies and scripts
 ```
 
@@ -212,16 +242,21 @@ Configuration is managed through the Settings page (Promaster access only).
 - [x] Project setup and configuration
 - [x] Nintex Textura design system implementation
 - [x] Supabase database schema and RLS
-- [x] Authentication system
+- [x] Authentication system with account-based multi-tenancy
 - [x] Main app layout and navigation
-- [ ] BPMN.js canvas integration
-- [ ] Data table implementations
-- [ ] User management functionality
-- [ ] Settings and Nintex API integration
-- [ ] Sync functionality
-- [ ] Advanced filtering and search
+- [x] BPMN.js canvas integration with Call Activities
+- [x] Custom palette and context pad providers
+- [x] Property panel for process linking
+- [x] Multi-dimensional filtering with visual highlighting
+- [x] Data table implementations (processes, systems, controls, critical operations)
+- [x] User management functionality
+- [x] Settings and Nintex API integration
+- [x] Sync functionality with batch processing
+- [x] API layer with Supabase Edge Functions
+- [x] Process Manager integration (open process in PM)
 - [ ] Export capabilities
 - [ ] Audit logging
+- [ ] Advanced reporting
 
 ## Contributing
 
