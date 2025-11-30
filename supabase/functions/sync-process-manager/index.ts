@@ -693,7 +693,8 @@ serve(async (req) => {
               modified_by: profile.email,
               account_id: profile.account_id,
             }, {
-              onConflict: 'pm_tag_id,account_id',
+              onConflict: 'systems_pm_tag_id_account_unique',
+              ignoreDuplicates: false,
             })
             .select()
             .single()
@@ -706,7 +707,7 @@ serve(async (req) => {
         }
 
         // Upsert process
-        const { data: savedProcess } = await supabaseAdmin
+        const { data: savedProcess, error: processError } = await supabaseAdmin
           .from('processes')
           .upsert({
             process_name: processDetail.processJson.Name,
@@ -716,10 +717,15 @@ serve(async (req) => {
             modified_by: profile.email,
             account_id: profile.account_id,
           }, {
-            onConflict: 'pm_process_id,account_id',
+            onConflict: 'processes_pm_id_account_unique',
+            ignoreDuplicates: false,
           })
           .select()
           .single()
+
+        if (processError) {
+          console.error(`Failed to upsert process ${processDetail.processJson.Name}:`, processError)
+        }
 
         if (savedProcess) {
           // Update process-system relationships
