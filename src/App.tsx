@@ -39,7 +39,7 @@ const App = () => (
             <Route
               path="/data"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiresEditor>
                   <Data />
                 </ProtectedRoute>
               }
