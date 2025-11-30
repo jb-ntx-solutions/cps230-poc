@@ -105,9 +105,8 @@ export function BpmnCanvas({
       const canvas = modeler.get('canvas') as any;
       canvas.zoom('fit-viewport');
 
-      // Set read-only mode for users
+      // Set read-only mode for basic users
       if (userRole === 'user') {
-        const modeling = modeler.get('modeling') as any;
         const eventBus = modeler.get('eventBus') as any;
 
         // Prevent all editing operations
@@ -116,6 +115,12 @@ export function BpmnCanvas({
         eventBus.on('commandStack.connection.create.preExecute', 10000, () => false);
         eventBus.on('commandStack.connection.delete.preExecute', 10000, () => false);
         eventBus.on('commandStack.elements.move.preExecute', 10000, () => false);
+        eventBus.on('commandStack.shape.resize.preExecute', 10000, () => false);
+        eventBus.on('commandStack.element.updateProperties.preExecute', 10000, () => false);
+
+        // Disable context pad and palette for read-only mode
+        modeler.get('contextPad').close();
+        modeler.get('palette').close();
       }
     }).catch((err: Error) => {
       console.error('Error importing BPMN diagram:', err);
@@ -345,8 +350,8 @@ export function BpmnCanvas({
         `}</style>
       </div>
 
-      {/* Properties Panel (only for editors when element is selected) */}
-      {canEdit && selectedElement?.type === 'bpmn:CallActivity' && (
+      {/* Properties Panel (shown for all users when element is selected) */}
+      {selectedElement?.type === 'bpmn:CallActivity' && (
         <ProcessPropertiesPanel
           selectedProcessId={selectedProcessId}
           processes={processes}
@@ -355,6 +360,7 @@ export function BpmnCanvas({
             const selection = modelerRef.current?.get('selection') as any;
             selection?.deselect(selectedElement);
           }}
+          readOnly={userRole === 'user'}
         />
       )}
     </div>
