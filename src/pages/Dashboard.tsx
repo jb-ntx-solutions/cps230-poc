@@ -1,13 +1,12 @@
 import { AppLayout } from '@/components/AppLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BpmnCanvas } from '@/components/bpmn/BpmnCanvas';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { FiltersSidebar } from '@/components/bpmn/FiltersSidebar';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useState } from 'react';
-import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { FilterState } from '@/components/bpmn/utils/highlightCalculator';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Process {
   id: string;
@@ -18,6 +17,7 @@ interface Process {
   input_processes: string[] | null;
   output_processes: string[] | null;
   canvas_position: { x: number; y: number } | null;
+  regions: string[] | null;
 }
 
 interface System {
@@ -26,15 +26,25 @@ interface System {
   pm_tag_id: string;
 }
 
-interface ProcessSystem {
-  process_id: string;
-  system_id: string;
+interface Control {
+  id: string;
+  control_id: string | null;
+  control_name: string | null;
+}
+
+interface CriticalOperation {
+  id: string;
+  operation_name: string;
 }
 
 export default function Dashboard() {
-  const [selectedSystemId, setSelectedSystemId] = useState<string | null>(null);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const { profile } = useAuth();
+  const [filters, setFilters] = useState<FilterState>({
+    systems: [],
+    regions: [],
+    controls: [],
+    criticalOperations: []
+  });
 
   // Fetch all systems
   const { data: systems, isLoading: systemsLoading } = useQuery({
@@ -50,159 +60,129 @@ export default function Dashboard() {
     },
   });
 
-  // Fetch all processes
+  // Fetch all processes with related data
   const { data: processes, isLoading: processesLoading } = useQuery({
-    queryKey: ['processes'],
+    queryKey: ['processes-with-relations'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('processes')
-        .select('*')
+        .select(`
+          *,
+          process_systems!inner (
+            system:systems (
+              id,
+              system_name
+            )
+          ),
+          controls!controls_process_id_fkey (
+            id
+          ),
+          critical_operations!critical_operations_process_id_fkey (
+            id
+          )
+        `)
         .order('process_name');
 
       if (error) throw error;
-      return data as Process[];
+
+      // Transform the data to include systems, controls, and critical operations
+      return (data || []).map((process: any) => ({
+        id: process.id,
+        process_name: process.process_name,
+        process_unique_id: process.process_unique_id,
+        pm_process_id: process.pm_process_id,
+        owner_username: process.owner_username,
+        input_processes: process.input_processes,
+        output_processes: process.output_processes,
+        canvas_position: process.canvas_position,
+        regions: process.regions,
+        systems: process.process_systems?.map((ps: any) => ps.system).filter(Boolean) || [],
+        controls: process.controls || [],
+        criticalOperations: process.critical_operations || []
+      }));
     },
   });
 
-  // Fetch process-system relationships
-  const { data: processSystemsData, isLoading: processSystemsLoading } = useQuery({
-    queryKey: ['process_systems'],
+  // Fetch all controls
+  const { data: controls, isLoading: controlsLoading } = useQuery({
+    queryKey: ['controls'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('process_systems')
-        .select('*');
+        .from('controls')
+        .select('id, control_id, control_name')
+        .order('control_name');
 
       if (error) throw error;
-      return data as ProcessSystem[];
+      return data as Control[];
     },
   });
 
-  // Save canvas positions
-  const savePositionsMutation = useMutation({
-    mutationFn: async (positions: Record<string, { x: number; y: number }>) => {
-      const updates = Object.entries(positions).map(([processId, position]) => ({
-        id: processId,
-        canvas_position: position,
-      }));
+  // Fetch all critical operations
+  const { data: criticalOperations, isLoading: criticalOpsLoading } = useQuery({
+    queryKey: ['critical-operations'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('critical_operations')
+        .select('id, operation_name')
+        .order('operation_name');
 
-      for (const update of updates) {
-        const { error } = await supabase
-          .from('processes')
-          .update({ canvas_position: update.canvas_position })
-          .eq('id', update.id);
-
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['processes'] });
-      toast({
-        title: 'Positions saved',
-        description: 'Canvas positions have been saved successfully',
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: 'Error saving positions',
-        description: error.message,
-        variant: 'destructive',
-      });
+      if (error) throw error;
+      return data as CriticalOperation[];
     },
   });
 
-  // Filter processes by selected system
-  const filteredProcesses = selectedSystemId && processSystemsData && processes
-    ? processes.filter(process =>
-        processSystemsData.some(ps =>
-          ps.process_id === process.id && ps.system_id === selectedSystemId
-        )
-      )
-    : processes || [];
+  // Extract unique regions from processes
+  const regions = Array.from(
+    new Set(
+      processes?.flatMap(p => p.regions || []).filter(Boolean) || []
+    )
+  ).sort();
 
-  const isLoading = systemsLoading || processesLoading || processSystemsLoading;
+  const isLoading = systemsLoading || processesLoading || controlsLoading || criticalOpsLoading;
+
+  const userRole = profile?.role || 'user';
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Process Model Canvas</CardTitle>
-                <CardDescription>
-                  Visualize and edit the connections between processes for CPS230 Critical Operations
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="w-64">
-                  <Select
-                    value={selectedSystemId || 'all'}
-                    onValueChange={(value) => setSelectedSystemId(value === 'all' ? null : value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Filter by System" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Systems</SelectItem>
-                      {systems?.map((system) => (
-                        <SelectItem key={system.id} value={system.id}>
-                          {system.system_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button
-                  onClick={() => {
-                    if (processes) {
-                      const positions: Record<string, { x: number; y: number }> = {};
-                      processes.forEach(p => {
-                        if (p.canvas_position) {
-                          positions[p.id] = p.canvas_position;
-                        }
-                      });
-                      savePositionsMutation.mutate(positions);
-                    }
-                  }}
-                  disabled={savePositionsMutation.isPending}
-                >
-                  {savePositionsMutation.isPending && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  Save Positions
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="flex h-[600px] items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : filteredProcesses.length === 0 ? (
-              <div className="flex h-[600px] items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg bg-muted/10">
+      {isLoading ? (
+        <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="flex h-[calc(100vh-4rem)]">
+          {/* Filters Sidebar */}
+          <FiltersSidebar
+            systems={systems || []}
+            regions={regions}
+            controls={controls || []}
+            criticalOperations={criticalOperations || []}
+            selectedFilters={filters}
+            onFilterChange={setFilters}
+          />
+
+          {/* BPMN Canvas */}
+          <div className="flex-1 overflow-hidden">
+            {processes && processes.length > 0 ? (
+              <BpmnCanvas
+                processes={processes}
+                userRole={userRole as 'promaster' | 'business_analyst' | 'user'}
+                filters={filters}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center border-2 border-dashed border-muted-foreground/25 bg-muted/10">
                 <div className="text-center space-y-2">
                   <p className="text-lg font-medium text-muted-foreground">
                     No processes found
                   </p>
                   <p className="text-sm text-muted-foreground/75">
-                    {selectedSystemId
-                      ? 'No processes are associated with the selected system'
-                      : 'Sync processes from Nintex Process Manager in Settings'}
+                    Sync processes from Nintex Process Manager in Settings
                   </p>
                 </div>
               </div>
-            ) : (
-              <div className="border rounded-lg overflow-hidden">
-                <BpmnCanvas
-                  processes={filteredProcesses}
-                  onSavePositions={(positions) => savePositionsMutation.mutate(positions)}
-                />
-              </div>
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }
