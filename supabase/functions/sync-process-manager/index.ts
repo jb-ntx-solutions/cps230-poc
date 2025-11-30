@@ -131,16 +131,19 @@ async function authenticateProcessManager(config: ProcessManagerConfig): Promise
   })
 
   if (!response.ok) {
+    const errorText = await response.text()
+    console.error(`Auth failed. URL: ${authUrl}, Status: ${response.status}, Body: ${errorText}`)
     throw new Error(`Authentication failed: ${response.statusText}`)
   }
 
   const data: ProcessManagerAuthResponse = await response.json()
+  console.log(`Site auth successful. Token length: ${data.access_token?.length || 0}, Token type: ${data.token_type}, Expires in: ${data.expires_in}s`)
   return data.access_token
 }
 
 // Get Search Service token
 async function getSearchToken(config: ProcessManagerConfig, siteToken: string): Promise<string> {
-  const searchTokenUrl = `https://${config.siteUrl}/search/GetSearchServiceToken`
+  const searchTokenUrl = `https://${config.siteUrl}/${config.tenantId}/search/GetSearchServiceToken`
 
   const response = await fetch(searchTokenUrl, {
     method: 'GET',
@@ -150,10 +153,13 @@ async function getSearchToken(config: ProcessManagerConfig, siteToken: string): 
   })
 
   if (!response.ok) {
+    const errorText = await response.text()
+    console.error(`Search token request failed. URL: ${searchTokenUrl}, Status: ${response.status}, Body: ${errorText}`)
     throw new Error(`Failed to get search token: ${response.statusText}`)
   }
 
   const data: SearchAuthResponse = await response.json()
+  console.log(`Search token received. Token length: ${data.access_token?.length || 0}`)
   return data.access_token
 }
 
@@ -180,12 +186,15 @@ async function searchCPS230Processes(
     })
 
     if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`Search API request failed. URL: ${pagedUrl}, Status: ${response.status}, Body: ${errorText}`)
       throw new Error(`Search API failed: ${response.statusText}`)
     }
 
     const data: SearchResponse = await response.json()
 
     if (!data.success) {
+      console.error('Search API returned unsuccessful response:', JSON.stringify(data))
       throw new Error('Search API returned unsuccessful response')
     }
 
