@@ -55,16 +55,12 @@ export function getModelerConfig(userRole: string) {
     config.additionalModules.push({
       __init__: ['readOnlyProvider'],
       readOnlyProvider: ['type', class ReadOnlyProvider {
-        constructor(eventBus: any, contextPad: any, dragging: any, directEditing: any, palette: any) {
-          // Prevent all editing operations by intercepting events
-          eventBus.on('element.click', 10000, (event: any) => {
-            // Allow selection but prevent editing
-            return event;
-          });
+        static $inject = ['eventBus', 'contextPad', 'palette'];
 
+        constructor(eventBus: any, contextPad: any, palette: any) {
           // Completely disable dragging
           eventBus.on('element.mousedown', 10000, (event: any) => {
-            if (event.originalEvent.button === 0) {
+            if (event.originalEvent && event.originalEvent.button === 0) {
               return false; // Prevent left-click drag
             }
           });
