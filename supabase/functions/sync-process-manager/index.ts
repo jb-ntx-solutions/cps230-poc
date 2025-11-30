@@ -683,21 +683,43 @@ serve(async (req) => {
             continue
           }
 
-          // Upsert system
-          const { data: system } = await supabaseAdmin
+          // Upsert system - check if it already exists first
+          const { data: existingSystem } = await supabaseAdmin
             .from('systems')
-            .upsert({
-              system_name: systemTag.name,
-              system_id: systemTag.id.toString(),
-              pm_tag_id: systemTag.id.toString(),
-              modified_by: profile.email,
-              account_id: profile.account_id,
-            }, {
-              onConflict: 'systems_pm_tag_id_account_unique',
-              ignoreDuplicates: false,
-            })
-            .select()
-            .single()
+            .select('id')
+            .eq('pm_tag_id', systemTag.id.toString())
+            .eq('account_id', profile.account_id)
+            .maybeSingle()
+
+          let system
+          if (existingSystem) {
+            // Update existing system
+            const result = await supabaseAdmin
+              .from('systems')
+              .update({
+                system_name: systemTag.name,
+                system_id: systemTag.id.toString(),
+                modified_by: profile.email,
+              })
+              .eq('id', existingSystem.id)
+              .select()
+              .single()
+            system = result.data
+          } else {
+            // Insert new system
+            const result = await supabaseAdmin
+              .from('systems')
+              .insert({
+                system_name: systemTag.name,
+                system_id: systemTag.id.toString(),
+                pm_tag_id: systemTag.id.toString(),
+                modified_by: profile.email,
+                account_id: profile.account_id,
+              })
+              .select()
+              .single()
+            system = result.data
+          }
 
           if (system) {
             processSystemIds.push(system.id)
@@ -706,25 +728,52 @@ serve(async (req) => {
           }
         }
 
-        // Upsert process
-        const { data: savedProcess, error: processError } = await supabaseAdmin
+        // Upsert process - check if it already exists first
+        const { data: existingProcess } = await supabaseAdmin
           .from('processes')
-          .upsert({
-            process_name: processDetail.processJson.Name,
-            process_unique_id: processDetail.processJson.UniqueId,
-            pm_process_id: processDetail.processJson.Id,
-            owner_username: processDetail.processJson.Owner || null,
-            modified_by: profile.email,
-            account_id: profile.account_id,
-          }, {
-            onConflict: 'processes_pm_id_account_unique',
-            ignoreDuplicates: false,
-          })
-          .select()
-          .single()
+          .select('id')
+          .eq('pm_process_id', processDetail.processJson.Id)
+          .eq('account_id', profile.account_id)
+          .maybeSingle()
+
+        let savedProcess
+        let processError
+
+        if (existingProcess) {
+          // Update existing process
+          const result = await supabaseAdmin
+            .from('processes')
+            .update({
+              process_name: processDetail.processJson.Name,
+              process_unique_id: processDetail.processJson.UniqueId,
+              owner_username: processDetail.processJson.Owner || null,
+              modified_by: profile.email,
+            })
+            .eq('id', existingProcess.id)
+            .select()
+            .single()
+          savedProcess = result.data
+          processError = result.error
+        } else {
+          // Insert new process
+          const result = await supabaseAdmin
+            .from('processes')
+            .insert({
+              process_name: processDetail.processJson.Name,
+              process_unique_id: processDetail.processJson.UniqueId,
+              pm_process_id: processDetail.processJson.Id,
+              owner_username: processDetail.processJson.Owner || null,
+              modified_by: profile.email,
+              account_id: profile.account_id,
+            })
+            .select()
+            .single()
+          savedProcess = result.data
+          processError = result.error
+        }
 
         if (processError) {
-          console.error(`Failed to upsert process ${processDetail.processJson.Name}:`, processError)
+          console.error(`Failed to save process ${processDetail.processJson.Name}:`, processError)
         }
 
         if (savedProcess) {
