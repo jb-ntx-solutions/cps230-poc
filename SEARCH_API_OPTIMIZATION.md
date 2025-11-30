@@ -1,4 +1,4 @@
-# Search API Optimization - DEPLOYED ✅
+# Search API Optimization - DEBUGGING 🔍
 
 ## The Breakthrough
 
@@ -212,8 +212,31 @@ Processing batch 1/2 (processes 1-100 of 180)
    - Removed `hasCPS230Tag` check (no longer needed)
    - Updated all references from `allProcesses` to `cps230ProcessUniqueIds`
 
-## Ready to Test!
+## Current Status - Debugging Authentication
 
-The Edge Function is deployed and ready. Just run the migration (if not done) and click Sync Now!
+### Issue
+The Search API implementation is complete but encountering "Unauthorized" errors when calling the search endpoint.
 
-**Expected result**: Sync completes in ~3-4 minutes with no timeouts. 🚀
+### What's Been Done
+1. ✅ Search API implementation complete
+2. ✅ Region endpoint mapping added
+3. ✅ Search token authentication added
+4. ✅ Enhanced logging deployed for debugging
+5. ⏳ Investigating authentication failure
+
+### Next Steps
+1. Run the database migration (see Migration Required section above)
+2. Click "Sync Now" in the app
+3. Check Edge Function logs at: https://supabase.com/dashboard/project/rdqavrqfisyzwfqhckcp/functions/sync-process-manager/logs
+4. See [SEARCH_AUTH_DEBUG.md](SEARCH_AUTH_DEBUG.md) for what to look for in logs
+
+### Enhanced Logging
+The Edge Function now logs:
+- Site authentication success/failure with token length and type
+- Search token request URL and response
+- Search API request URL and any errors
+- Detailed error bodies for all failed requests
+
+This will help identify exactly where and why the authentication is failing.
+
+**Expected result after fix**: Sync completes in ~3-4 minutes with no timeouts. 🚀
