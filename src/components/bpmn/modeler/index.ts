@@ -70,6 +70,22 @@ export function getModelerConfig(userRole: string) {
             }
           });
 
+          // Hide context pad completely
+          if (contextPad && contextPad._overlays) {
+            contextPad._overlays.show = () => {};
+          }
+
+          // Prevent context pad from opening on element selection
+          eventBus.on('contextPad.create', 10000, () => false);
+          eventBus.on('selection.changed', 10000, (event: any) => {
+            // Allow selection but close context pad immediately
+            setTimeout(() => {
+              if (contextPad) {
+                contextPad.close();
+              }
+            }, 0);
+          });
+
           // Disable dragging of elements (not canvas panning)
           eventBus.on('create.start', 10000, () => false);
           eventBus.on('shape.move.start', 10000, () => false);
@@ -90,7 +106,7 @@ export function getModelerConfig(userRole: string) {
             eventBus.on(eventName, 10000, () => false);
           });
 
-          // Override context pad and palette providers to return nothing
+          // Override context pad provider to return nothing
           contextPad.registerProvider({
             getContextPadEntries: () => ({})
           });

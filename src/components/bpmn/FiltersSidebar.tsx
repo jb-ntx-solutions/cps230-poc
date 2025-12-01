@@ -171,15 +171,16 @@ export function FiltersSidebar({
                 <p className="text-xs text-muted-foreground">No systems found</p>
               ) : (
                 filteredSystems.map((system) => (
-                  <div key={system.id} className="flex items-center space-x-2">
+                  <div key={system.id} className="flex items-start space-x-2">
                     <Checkbox
                       id={`system-${system.id}`}
                       checked={selectedFilters.systems.includes(system.id)}
                       onCheckedChange={() => handleSystemToggle(system.id)}
+                      className="mt-0.5"
                     />
                     <Label
                       htmlFor={`system-${system.id}`}
-                      className="text-sm font-normal cursor-pointer flex-1"
+                      className="text-sm font-normal cursor-pointer flex-1 break-words leading-tight"
                     >
                       {system.system_name}
                     </Label>
@@ -215,15 +216,16 @@ export function FiltersSidebar({
                 <p className="text-xs text-muted-foreground">No regions found</p>
               ) : (
                 filteredRegions.map((region) => (
-                  <div key={region} className="flex items-center space-x-2">
+                  <div key={region} className="flex items-start space-x-2">
                     <Checkbox
                       id={`region-${region}`}
                       checked={selectedFilters.regions.includes(region)}
                       onCheckedChange={() => handleRegionToggle(region)}
+                      className="mt-0.5"
                     />
                     <Label
                       htmlFor={`region-${region}`}
-                      className="text-sm font-normal cursor-pointer flex-1"
+                      className="text-sm font-normal cursor-pointer flex-1 break-words leading-tight"
                     >
                       {region}
                     </Label>
@@ -259,15 +261,16 @@ export function FiltersSidebar({
                 <p className="text-xs text-muted-foreground">No controls found</p>
               ) : (
                 filteredControls.map((control) => (
-                  <div key={control.id} className="flex items-center space-x-2">
+                  <div key={control.id} className="flex items-start space-x-2">
                     <Checkbox
                       id={`control-${control.id}`}
                       checked={selectedFilters.controls.includes(control.id)}
                       onCheckedChange={() => handleControlToggle(control.id)}
+                      className="mt-0.5"
                     />
                     <Label
                       htmlFor={`control-${control.id}`}
-                      className="text-sm font-normal cursor-pointer flex-1"
+                      className="text-sm font-normal cursor-pointer flex-1 break-words leading-tight"
                     >
                       {control.control_name || control.control_id || 'Unnamed Control'}
                     </Label>
@@ -303,15 +306,16 @@ export function FiltersSidebar({
                 <p className="text-xs text-muted-foreground">No critical operations found</p>
               ) : (
                 filteredCriticalOps.map((op) => (
-                  <div key={op.id} className="flex items-center space-x-2">
+                  <div key={op.id} className="flex items-start space-x-2">
                     <Checkbox
                       id={`criticalop-${op.id}`}
                       checked={selectedFilters.criticalOperations.includes(op.id)}
                       onCheckedChange={() => handleCriticalOpToggle(op.id)}
+                      className="mt-0.5"
                     />
                     <Label
                       htmlFor={`criticalop-${op.id}`}
-                      className="text-sm font-normal cursor-pointer flex-1"
+                      className="text-sm font-normal cursor-pointer flex-1 break-words leading-tight"
                     >
                       {op.operation_name}
                     </Label>
