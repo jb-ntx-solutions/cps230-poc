@@ -55,15 +55,24 @@ export function getModelerConfig(userRole: string) {
     config.additionalModules.push({
       __init__: ['readOnlyProvider'],
       readOnlyProvider: ['type', class ReadOnlyProvider {
-        static $inject = ['eventBus', 'contextPad', 'palette'];
+        static $inject = ['eventBus', 'contextPad', 'palette', 'paletteProvider'];
 
-        constructor(eventBus: any, contextPad: any, palette: any) {
-          // Completely disable dragging
-          eventBus.on('element.mousedown', 10000, (event: any) => {
-            if (event.originalEvent && event.originalEvent.button === 0) {
-              return false; // Prevent left-click drag
+        constructor(eventBus: any, contextPad: any, palette: any, paletteProvider: any) {
+          // Hide the palette
+          if (palette && palette._container) {
+            palette._container.style.display = 'none';
+          }
+
+          // Prevent palette from opening
+          eventBus.on('palette.create', () => {
+            if (palette && palette._container) {
+              palette._container.style.display = 'none';
             }
           });
+
+          // Disable dragging of elements (not canvas panning)
+          eventBus.on('create.start', 10000, () => false);
+          eventBus.on('shape.move.start', 10000, () => false);
 
           // Disable all command stack operations
           const commandEvents = [
@@ -81,9 +90,15 @@ export function getModelerConfig(userRole: string) {
             eventBus.on(eventName, 10000, () => false);
           });
 
-          // Disable context pad and palette
-          contextPad.registerProvider({ getContextPadEntries: () => ({}) });
-          palette.registerProvider({ getPaletteEntries: () => ({}) });
+          // Override context pad and palette providers to return nothing
+          contextPad.registerProvider({
+            getContextPadEntries: () => ({})
+          });
+
+          // Override palette to be empty
+          if (paletteProvider) {
+            paletteProvider.getPaletteEntries = () => ({});
+          }
         }
       }]
     });
