@@ -1,12 +1,14 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { corsHeaders } from '../_shared/cors.ts'
+import { corsHeaders, getCorsHeaders } from '../_shared/cors.ts'
 import { authenticateUser } from '../_shared/auth.ts'
 import { validateProcessInput, ValidationError } from '../_shared/validation.ts'
 
 serve(async (req) => {
+  const origin = req.headers.get('origin')
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: getCorsHeaders(origin) })
   }
 
   try {
@@ -60,7 +62,7 @@ serve(async (req) => {
           }
 
           return new Response(JSON.stringify({ data: processWithSystems }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           })
         } else {
           // Get all processes
@@ -105,7 +107,7 @@ serve(async (req) => {
           )
 
           return new Response(JSON.stringify({ data: processesWithSystems }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           })
         }
       }
@@ -139,7 +141,7 @@ serve(async (req) => {
         if (error) throw error
 
         return new Response(JSON.stringify({ data }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           status: 201,
         })
       }
@@ -170,7 +172,7 @@ serve(async (req) => {
         if (error) throw error
 
         return new Response(JSON.stringify({ data }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         })
       }
 
@@ -188,13 +190,13 @@ serve(async (req) => {
         if (error) throw error
 
         return new Response(JSON.stringify({ success: true }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         })
       }
 
       default:
         return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           status: 405,
         })
     }
@@ -207,7 +209,7 @@ serve(async (req) => {
         error: error.message || 'An error occurred',
       }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         status: error.message === 'Unauthorized' ? 401 : status,
       }
     )

@@ -280,3 +280,31 @@ export function validateCriticalOperationInput(body: any): Partial<CriticalOpera
 
   return data
 }
+
+/**
+ * Validates user profile input
+ */
+export interface UserProfileInput {
+  full_name?: string | null
+  role?: 'promaster' | 'basic' | null
+}
+
+export function validateUserProfileInput(body: any): Partial<UserProfileInput> {
+  const allowedFields: (keyof UserProfileInput)[] = [
+    'full_name',
+    'role',
+  ]
+
+  const data = whitelistFields<UserProfileInput>(body, allowedFields)
+
+  if (data.full_name) {
+    data.full_name = sanitizeString(data.full_name, 255)
+  }
+
+  // Validate role enum
+  if (data.role && !['promaster', 'basic'].includes(data.role)) {
+    throw new ValidationError('role must be either "promaster" or "basic"')
+  }
+
+  return data
+}

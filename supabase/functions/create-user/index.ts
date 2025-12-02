@@ -1,11 +1,14 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { corsHeaders } from '../_shared/cors.ts'
+import { corsHeaders, getCorsHeaders } from '../_shared/cors.ts'
 import { authenticateUser, createAdminClient } from '../_shared/auth.ts'
+import { validateEmail, sanitizeString, ValidationError } from '../_shared/validation.ts'
 
 serve(async (req) => {
+  const origin = req.headers.get('origin')
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: getCorsHeaders(origin) })
   }
 
   try {
@@ -31,19 +34,25 @@ serve(async (req) => {
     }
 
     // Parse the request body
-    const { email, password, full_name, role, account_id } = await req.json()
+    const body = await req.json()
 
-    // Validate inputs
-    if (!email || !password) {
+    // Validate and sanitize inputs
+    if (!body.email || !body.password) {
       throw new Error('Email and password are required')
     }
 
-    // Ensure the user is creating accounts in their own account
-    if (account_id && account_id !== profile.account_id) {
-      throw new Error('You can only create users in your own account')
+    if (!validateEmail(body.email)) {
+      throw new ValidationError('Invalid email format')
     }
 
-    const targetAccountId = account_id || profile.account_id
+    const email = sanitizeString(body.email, 255)
+    const password = body.password
+    const full_name = body.full_name ? sanitizeString(body.full_name, 255) : null
+    const role = ['promaster', 'basic'].includes(body.role) ? body.role : 'basic'
+
+    // Ensure the user is creating accounts in their own account
+    // Always use the current user's account_id, ignore account_id from request
+    const targetAccountId = profile.account_id
 
     // Create the auth user
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -69,8 +78,8 @@ serve(async (req) => {
       .insert({
         user_id: authData.user.id,
         email: email,
-        full_name: full_name || null,
-        role: role || 'user',
+        full_name: full_name,
+        role: role,
         account_id: targetAccountId,
       })
 
@@ -89,19 +98,23 @@ serve(async (req) => {
         },
       }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         status: 200,
       }
     )
-  } catch (error) {
+  } catch (error: any) {
+    const status = error instanceof ValidationError ? 400 :
+                   error.message === 'Unauthorized' ? 401 :
+                   error.message?.includes('Only Promasters') ? 403 : 500
+
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message,
+        error: error.message || 'An error occurred',
       }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
+        headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
+        status,
       }
     )
   }
