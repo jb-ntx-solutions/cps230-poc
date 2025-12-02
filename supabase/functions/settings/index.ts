@@ -1,11 +1,14 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { corsHeaders } from '../_shared/cors.ts'
+import { corsHeaders, getCorsHeaders } from '../_shared/cors.ts'
 import { authenticateUser } from '../_shared/auth.ts'
+import { validateKeys, sanitizeString, ValidationError } from '../_shared/validation.ts'
 
 serve(async (req) => {
+  const origin = req.headers.get('origin')
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: getCorsHeaders(origin) })
   }
 
   try {
@@ -13,15 +16,18 @@ serve(async (req) => {
     const { user, supabaseClient } = await authenticateUser(authHeader)
 
     const url = new URL(req.url)
-    const keys = url.searchParams.get('keys')?.split(',')
+
+    // Whitelist allowed setting keys
+    const ALLOWED_KEYS = ['regions', 'bpmn_diagram', 'sync_frequency', 'last_sync_timestamp', 'nintex_api_url', 'nintex_username', 'nintex_password', 'nintex_tenant_id']
+    const validKeys = url.searchParams.get('keys') ? validateKeys(url.searchParams.get('keys'), ALLOWED_KEYS) : ALLOWED_KEYS
 
     switch (req.method) {
       case 'GET': {
         // Get settings, optionally filtered by keys
         let query = supabaseClient.from('settings').select('*')
 
-        if (keys && keys.length > 0) {
-          query = query.in('key', keys)
+        if (validKeys && validKeys.length > 0) {
+          query = query.in('key', validKeys)
         }
 
         const { data, error } = await query
@@ -29,7 +35,7 @@ serve(async (req) => {
         if (error) throw error
 
         return new Response(JSON.stringify({ data }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         })
       }
 
@@ -54,13 +60,26 @@ serve(async (req) => {
           throw new Error('User profile not found')
         }
 
-        // Add account_id and modified_by to each setting
-        const updates = settings.map((setting: any) => ({
-          key: setting.key,
-          value: setting.value,
-          modified_by: profile.email,
-          account_id: profile.account_id,
-        }))
+        // Validate and sanitize each setting
+        const updates = settings.map((setting: any) => {
+          // Validate key against whitelist
+          if (!ALLOWED_KEYS.includes(setting.key)) {
+            throw new ValidationError(`Invalid setting key: ${setting.key}`)
+          }
+
+          // Sanitize value if it's a string
+          let sanitizedValue = setting.value
+          if (typeof setting.value === 'string') {
+            sanitizedValue = sanitizeString(setting.value, 5000)
+          }
+
+          return {
+            key: setting.key,
+            value: sanitizedValue,
+            modified_by: profile.email,
+            account_id: profile.account_id,
+          }
+        })
 
         const { error } = await supabaseClient
           .from('settings')
@@ -69,24 +88,27 @@ serve(async (req) => {
         if (error) throw error
 
         return new Response(JSON.stringify({ success: true }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         })
       }
 
       default:
         return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           status: 405,
         })
     }
   } catch (error: any) {
+    const status = error instanceof ValidationError ? 400 :
+                   error.message === 'Unauthorized' ? 401 : 500
+
     return new Response(
       JSON.stringify({
         error: error.message || 'An error occurred',
       }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: error.message === 'Unauthorized' ? 401 : 400,
+        headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
+        status,
       }
     )
   }

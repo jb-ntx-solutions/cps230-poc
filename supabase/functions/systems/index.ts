@@ -1,11 +1,14 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { corsHeaders } from '../_shared/cors.ts'
+import { corsHeaders, getCorsHeaders } from '../_shared/cors.ts'
 import { authenticateUser } from '../_shared/auth.ts'
+import { validateSystemInput, ValidationError } from '../_shared/validation.ts'
 
 serve(async (req) => {
+  const origin = req.headers.get('origin')
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: getCorsHeaders(origin) })
   }
 
   try {
@@ -28,7 +31,7 @@ serve(async (req) => {
           if (error) throw error
 
           return new Response(JSON.stringify({ data }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           })
         } else {
           // Get all systems
@@ -40,7 +43,7 @@ serve(async (req) => {
           if (error) throw error
 
           return new Response(JSON.stringify({ data }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           })
         }
       }
@@ -48,10 +51,24 @@ serve(async (req) => {
       case 'POST': {
         // Create system
         const body = await req.json()
+
+        // Validate and whitelist input fields
+        const validatedData = validateSystemInput(body)
+
+        // Get user's account_id for multi-tenancy
+        const { data: profile, error: profileError } = await supabaseClient
+          .from('user_profiles')
+          .select('account_id')
+          .eq('user_id', user.id)
+          .single()
+
+        if (profileError) throw profileError
+
         const { data, error } = await supabaseClient
           .from('systems')
           .insert({
-            ...body,
+            ...validatedData,
+            account_id: profile.account_id,
             modified_by: user.email || 'unknown',
           })
           .select()
@@ -60,7 +77,7 @@ serve(async (req) => {
         if (error) throw error
 
         return new Response(JSON.stringify({ data }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           status: 201,
         })
       }
@@ -73,10 +90,14 @@ serve(async (req) => {
         }
 
         const body = await req.json()
+
+        // Validate and whitelist input fields
+        const validatedData = validateSystemInput(body)
+
         const { data, error } = await supabaseClient
           .from('systems')
           .update({
-            ...body,
+            ...validatedData,
             modified_by: user.email || 'unknown',
             modified_date: new Date().toISOString(),
           })
@@ -87,7 +108,7 @@ serve(async (req) => {
         if (error) throw error
 
         return new Response(JSON.stringify({ data }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         })
       }
 
@@ -111,18 +132,21 @@ serve(async (req) => {
 
       default:
         return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           status: 405,
         })
     }
   } catch (error: any) {
+    const status = error instanceof ValidationError ? 400 :
+                   error.message === 'Unauthorized' ? 401 : 500
+
     return new Response(
       JSON.stringify({
         error: error.message || 'An error occurred',
       }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: error.message === 'Unauthorized' ? 401 : 400,
+        headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
+        status,
       }
     )
   }

@@ -1,11 +1,14 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { corsHeaders } from '../_shared/cors.ts'
+import { corsHeaders, getCorsHeaders } from '../_shared/cors.ts'
 import { authenticateUser } from '../_shared/auth.ts'
+import { validateCriticalOperationInput, ValidationError } from '../_shared/validation.ts'
 
 serve(async (req) => {
+  const origin = req.headers.get('origin')
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: getCorsHeaders(origin) })
   }
 
   try {
@@ -28,7 +31,7 @@ serve(async (req) => {
           if (error) throw error
 
           return new Response(JSON.stringify({ data }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           })
         } else {
           // Get all critical operations
@@ -40,7 +43,7 @@ serve(async (req) => {
           if (error) throw error
 
           return new Response(JSON.stringify({ data }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           })
         }
       }
@@ -48,10 +51,14 @@ serve(async (req) => {
       case 'POST': {
         // Create critical operation
         const body = await req.json()
+
+        // Validate and whitelist input fields
+        const validatedData = validateCriticalOperationInput(body)
+
         const { data, error } = await supabaseClient
           .from('critical_operations')
           .insert({
-            ...body,
+            ...validatedData,
             modified_by: user.email || 'unknown',
           })
           .select()
@@ -60,7 +67,7 @@ serve(async (req) => {
         if (error) throw error
 
         return new Response(JSON.stringify({ data }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           status: 201,
         })
       }
@@ -73,10 +80,14 @@ serve(async (req) => {
         }
 
         const body = await req.json()
+
+        // Validate and whitelist input fields
+        const validatedData = validateCriticalOperationInput(body)
+
         const { data, error } = await supabaseClient
           .from('critical_operations')
           .update({
-            ...body,
+            ...validatedData,
             modified_by: user.email || 'unknown',
             modified_date: new Date().toISOString(),
           })
@@ -87,7 +98,7 @@ serve(async (req) => {
         if (error) throw error
 
         return new Response(JSON.stringify({ data }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         })
       }
 
@@ -105,24 +116,27 @@ serve(async (req) => {
         if (error) throw error
 
         return new Response(JSON.stringify({ success: true }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         })
       }
 
       default:
         return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           status: 405,
         })
     }
   } catch (error: any) {
+    const status = error instanceof ValidationError ? 400 :
+                   error.message === 'Unauthorized' ? 401 : 500
+
     return new Response(
       JSON.stringify({
         error: error.message || 'An error occurred',
       }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: error.message === 'Unauthorized' ? 401 : 400,
+        headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
+        status,
       }
     )
   }

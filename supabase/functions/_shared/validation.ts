@@ -234,3 +234,49 @@ export function validateControlInput(body: any): Partial<ControlInput> {
 
   return data
 }
+
+/**
+ * Validates critical operation input
+ */
+export interface CriticalOperationInput {
+  operation_name?: string
+  description?: string | null
+  system_id?: string | null
+  process_id?: string | null
+  color_code?: string | null
+}
+
+export function validateCriticalOperationInput(body: any): Partial<CriticalOperationInput> {
+  const allowedFields: (keyof CriticalOperationInput)[] = [
+    'operation_name',
+    'description',
+    'system_id',
+    'process_id',
+    'color_code',
+  ]
+
+  const data = whitelistFields<CriticalOperationInput>(body, allowedFields)
+
+  if (data.operation_name) {
+    data.operation_name = sanitizeString(data.operation_name, 255)
+  }
+
+  if (data.description) {
+    data.description = sanitizeString(data.description, 1000)
+  }
+
+  if (data.color_code) {
+    data.color_code = sanitizeString(data.color_code, 50)
+  }
+
+  // Validate UUIDs if provided
+  if (data.system_id && !validateUUID(data.system_id)) {
+    throw new ValidationError('system_id must be a valid UUID')
+  }
+
+  if (data.process_id && !validateUUID(data.process_id)) {
+    throw new ValidationError('process_id must be a valid UUID')
+  }
+
+  return data
+}
