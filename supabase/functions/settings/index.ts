@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { corsHeaders, getCorsHeaders } from '../_shared/cors.ts'
 import { authenticateUser } from '../_shared/auth.ts'
 import { validateKeys, sanitizeString, ValidationError } from '../_shared/validation.ts'
+import { encryptValue, decryptValue, shouldEncrypt } from '../_shared/encryption.ts'
 
 serve(async (req) => {
   const origin = req.headers.get('origin')
@@ -34,7 +35,24 @@ serve(async (req) => {
 
         if (error) throw error
 
-        return new Response(JSON.stringify({ data }), {
+        // Decrypt sensitive values before returning
+        const decryptedData = await Promise.all(
+          (data || []).map(async (setting) => {
+            if (shouldEncrypt(setting.key) && setting.value) {
+              try {
+                const decryptedValue = await decryptValue(setting.value)
+                return { ...setting, value: decryptedValue }
+              } catch (e) {
+                // If decryption fails, value might not be encrypted yet
+                console.error(`Failed to decrypt ${setting.key}:`, e)
+                return setting
+              }
+            }
+            return setting
+          })
+        )
+
+        return new Response(JSON.stringify({ data: decryptedData }), {
           headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         })
       }
@@ -60,26 +78,33 @@ serve(async (req) => {
           throw new Error('User profile not found')
         }
 
-        // Validate and sanitize each setting
-        const updates = settings.map((setting: any) => {
-          // Validate key against whitelist
-          if (!ALLOWED_KEYS.includes(setting.key)) {
-            throw new ValidationError(`Invalid setting key: ${setting.key}`)
-          }
+        // Validate, sanitize, and encrypt each setting
+        const updates = await Promise.all(
+          settings.map(async (setting: any) => {
+            // Validate key against whitelist
+            if (!ALLOWED_KEYS.includes(setting.key)) {
+              throw new ValidationError(`Invalid setting key: ${setting.key}`)
+            }
 
-          // Sanitize value if it's a string
-          let sanitizedValue = setting.value
-          if (typeof setting.value === 'string') {
-            sanitizedValue = sanitizeString(setting.value, 5000)
-          }
+            // Sanitize value if it's a string
+            let processedValue = setting.value
+            if (typeof setting.value === 'string') {
+              processedValue = sanitizeString(setting.value, 5000)
 
-          return {
-            key: setting.key,
-            value: sanitizedValue,
-            modified_by: profile.email,
-            account_id: profile.account_id,
-          }
-        })
+              // Encrypt sensitive values
+              if (shouldEncrypt(setting.key)) {
+                processedValue = await encryptValue(processedValue)
+              }
+            }
+
+            return {
+              key: setting.key,
+              value: processedValue,
+              modified_by: profile.email,
+              account_id: profile.account_id,
+            }
+          })
+        )
 
         const { error } = await supabaseClient
           .from('settings')
