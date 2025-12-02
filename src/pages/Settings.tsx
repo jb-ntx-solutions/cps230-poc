@@ -97,10 +97,13 @@ export default function Settings() {
 
   const handleSaveConnection = async () => {
     try {
+      // TODO: SECURITY - Implement encryption for password before saving
+      // Use Supabase Vault or client-side encryption
+      // For now, passwords are stored in plaintext (SECURITY RISK)
       await updateSettings.mutateAsync([
         { key: 'pm_site_url', value: siteUrl },
         { key: 'pm_username', value: username },
-        { key: 'pm_password', value: password },
+        { key: 'pm_password', value: password }, // ⚠️ PLAINTEXT PASSWORD
         { key: 'pm_tenant_id', value: tenantId },
       ]);
       toast.success('Connection settings saved successfully');

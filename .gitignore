@@ -17,6 +17,10 @@ dist-ssr
 .env.local
 .env.*.local
 
+# MCP and Claude configuration (contains secrets)
+.mcp.json
+.claude/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

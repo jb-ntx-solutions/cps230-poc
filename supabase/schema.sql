@@ -251,10 +251,25 @@ CREATE POLICY "Promasters can modify controls"
     );
 
 -- Settings Policies
-CREATE POLICY "Authenticated users can view settings"
+-- Policy 1: Promasters can view ALL settings
+CREATE POLICY "Promasters can view all settings"
     ON public.settings FOR SELECT
-    USING (auth.role() = 'authenticated');
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.user_profiles
+            WHERE user_id = auth.uid() AND role = 'promaster'
+        )
+    );
 
+-- Policy 2: Non-promasters can view only NON-SENSITIVE settings
+CREATE POLICY "Users can view non-sensitive settings"
+    ON public.settings FOR SELECT
+    USING (
+        auth.role() = 'authenticated' AND
+        key IN ('regions', 'bpmn_diagram', 'sync_frequency', 'last_sync_timestamp', 'nintex_api_url')
+    );
+
+-- Policy 3: Only promasters can modify settings
 CREATE POLICY "Promasters can modify settings"
     ON public.settings FOR ALL
     USING (

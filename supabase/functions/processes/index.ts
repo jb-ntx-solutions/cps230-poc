@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { authenticateUser } from '../_shared/auth.ts'
+import { validateProcessInput, ValidationError } from '../_shared/validation.ts'
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -112,10 +113,24 @@ serve(async (req) => {
       case 'POST': {
         // Create process
         const body = await req.json()
+
+        // Validate and whitelist input fields (prevents mass assignment)
+        const validatedData = validateProcessInput(body)
+
+        // Get user's account_id to enforce multi-tenancy
+        const { data: profile, error: profileError } = await supabaseClient
+          .from('user_profiles')
+          .select('account_id')
+          .eq('user_id', user.id)
+          .single()
+
+        if (profileError) throw profileError
+
         const { data, error } = await supabaseClient
           .from('processes')
           .insert({
-            ...body,
+            ...validatedData,
+            account_id: profile.account_id, // Force correct account
             modified_by: user.email || 'unknown',
           })
           .select()
@@ -137,10 +152,14 @@ serve(async (req) => {
         }
 
         const body = await req.json()
-        const { data, error } = await supabaseClient
+
+        // Validate and whitelist input fields (prevents mass assignment)
+        const validatedData = validateProcessInput(body)
+
+        const { data, error} = await supabaseClient
           .from('processes')
           .update({
-            ...body,
+            ...validatedData,
             modified_by: user.email || 'unknown',
             modified_date: new Date().toISOString(),
           })
@@ -180,13 +199,16 @@ serve(async (req) => {
         })
     }
   } catch (error: any) {
+    // Return 400 for validation errors, 500 for others
+    const status = error instanceof ValidationError ? 400 : 500
+
     return new Response(
       JSON.stringify({
         error: error.message || 'An error occurred',
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: error.message === 'Unauthorized' ? 401 : 400,
+        status: error.message === 'Unauthorized' ? 401 : status,
       }
     )
   }
