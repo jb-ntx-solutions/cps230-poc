@@ -71,6 +71,20 @@ CREATE TABLE IF NOT EXISTS public.process_systems (
 );
 
 -- =====================================================
+-- Process Controls Junction Table
+-- Maps processes to controls (many-to-many)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.process_controls (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    process_id UUID NOT NULL REFERENCES public.processes(id) ON DELETE CASCADE,
+    control_id UUID NOT NULL REFERENCES public.controls(id) ON DELETE CASCADE,
+    process_step TEXT, -- Which step in the process uses this control
+    activity_description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    UNIQUE(process_id, control_id, process_step)
+);
+
+-- =====================================================
 -- Critical Operations Table
 -- Defines critical operations for CPS230 compliance
 -- =====================================================
@@ -99,6 +113,7 @@ CREATE TABLE IF NOT EXISTS public.controls (
     system_id UUID REFERENCES public.systems(id) ON DELETE SET NULL,
     regions TEXT[], -- Multi-select: ['AU', 'UK', 'US', etc.]
     control_type TEXT, -- Type of control
+    pm_control_id TEXT, -- Process Manager control ID for sync
     modified_by TEXT NOT NULL,
     modified_date TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL

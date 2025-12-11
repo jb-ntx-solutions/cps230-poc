@@ -357,6 +357,68 @@ function extractSystemTags(processDetail: ProcessDetailResponse): Array<{ id: nu
   return Array.from(systemTags.entries()).map(([id, name]) => ({ id, name }))
 }
 
+// Extract control references from process details
+// Looks for pattern: #GRC_Control C-XXXX [optional description]
+function extractControls(processDetail: ProcessDetailResponse): Array<{ id: string; name: string }> {
+  const controls = new Map<string, string>()
+  // Regex to match #GRC_Control C-XXXX pattern
+  const controlPattern = /#GRC_Control\s+(C-\d+)/gi
+
+  const activities = processDetail.processJson.ProcessProcedures?.Activity || []
+  const decisions = processDetail.processJson.ProcessProcedures?.Decision || []
+
+  // Helper function to extract controls from text
+  const extractFromText = (text: string | null) => {
+    if (!text) return
+    let match
+    while ((match = controlPattern.exec(text)) !== null) {
+      const controlId = match[1] // e.g., "C-3466"
+      controls.set(controlId, controlId)
+    }
+  }
+
+  // Search through activities
+  for (const activity of activities) {
+    // Check activity text
+    extractFromText(activity.Text)
+
+    // Check activity attachment
+    extractFromText(activity.Attachment)
+
+    // Check tasks
+    const tasks = activity.ChildProcessProcedures?.Task || []
+    for (const task of tasks) {
+      extractFromText(task.Text)
+      extractFromText(task.Attachment)
+    }
+
+    // Check notes
+    const notes = activity.ChildProcessProcedures?.Note || []
+    for (const note of notes) {
+      extractFromText(note.Text)
+      extractFromText(note.Attachment)
+    }
+
+    // Check other procedure types that might contain control references
+    const procedureTypes = ['Information', 'Form', 'Guide', 'Policy', 'Training']
+    for (const type of procedureTypes) {
+      const procedures = activity.ChildProcessProcedures?.[type] || []
+      for (const procedure of procedures) {
+        extractFromText(procedure.Text)
+        extractFromText(procedure.Attachment)
+      }
+    }
+  }
+
+  // Search through decisions
+  for (const decision of decisions) {
+    extractFromText(decision.Text)
+    extractFromText(decision.Attachment)
+  }
+
+  return Array.from(controls.entries()).map(([id, name]) => ({ id, name }))
+}
+
 // Check if process has CPS230 tag
 function hasCPS230Tag(processDetail: ProcessDetailResponse): boolean {
   const processTags = processDetail.processJson.ProcessTags?.ProcessTag || []
@@ -522,8 +584,10 @@ serve(async (req) => {
 
       let processesProcessed = 0
       let systemsAdded = 0
+      let controlsAdded = 0
       let totalProcessedCount = 0
       const processedSystemIds = new Set<number>()
+      const processedControlIds = new Set<string>()
 
       // Track existing processes and systems for cleanup
       const { data: existingProcesses } = await supabaseAdmin
@@ -723,6 +787,69 @@ serve(async (req) => {
           }
         }
 
+        // Extract and save controls
+        const controlRefs = extractControls(processDetail)
+        const processControlIds: string[] = []
+
+        for (const controlRef of controlRefs) {
+          if (processedControlIds.has(controlRef.id)) {
+            // Control already processed, just get its UUID
+            const { data: existingControl } = await supabaseAdmin
+              .from('controls')
+              .select('id')
+              .eq('pm_control_id', controlRef.id)
+              .eq('account_id', profile.account_id)
+              .single()
+
+            if (existingControl) {
+              processControlIds.push(existingControl.id)
+            }
+            continue
+          }
+
+          // Upsert control - check if it already exists first
+          const { data: existingControl } = await supabaseAdmin
+            .from('controls')
+            .select('id')
+            .eq('pm_control_id', controlRef.id)
+            .eq('account_id', profile.account_id)
+            .maybeSingle()
+
+          let control
+          if (existingControl) {
+            // Update existing control
+            const result = await supabaseAdmin
+              .from('controls')
+              .update({
+                control_name: controlRef.name,
+                modified_by: profile.email,
+              })
+              .eq('id', existingControl.id)
+              .select()
+              .single()
+            control = result.data
+          } else {
+            // Insert new control
+            const result = await supabaseAdmin
+              .from('controls')
+              .insert({
+                control_name: controlRef.name,
+                pm_control_id: controlRef.id,
+                modified_by: profile.email,
+                account_id: profile.account_id,
+              })
+              .select()
+              .single()
+            control = result.data
+          }
+
+          if (control) {
+            processControlIds.push(control.id)
+            processedControlIds.add(controlRef.id)
+            controlsAdded++
+          }
+        }
+
         // Upsert process - check if it already exists first
         const { data: existingProcess } = await supabaseAdmin
           .from('processes')
@@ -791,6 +918,25 @@ serve(async (req) => {
               )
           }
 
+          // Update process-control relationships
+          // First, delete existing relationships for this process
+          await supabaseAdmin
+            .from('process_controls')
+            .delete()
+            .eq('process_id', savedProcess.id)
+
+          // Then, create new relationships
+          if (processControlIds.length > 0) {
+            await supabaseAdmin
+              .from('process_controls')
+              .insert(
+                processControlIds.map(controlId => ({
+                  process_id: savedProcess.id,
+                  control_id: controlId,
+                }))
+              )
+          }
+
           processesProcessed++
         }
 
@@ -850,7 +996,7 @@ serve(async (req) => {
           onConflict: 'key,account_id',
         })
 
-      console.log(`Sync completed: ${processesProcessed} processes, ${systemsAdded} systems, ${processesToDelete.length} deleted`)
+      console.log(`Sync completed: ${processesProcessed} processes, ${systemsAdded} systems, ${controlsAdded} controls, ${processesToDelete.length} deleted`)
     } catch (error: any) {
       // Update sync history with error
       console.error('Sync error:', error)

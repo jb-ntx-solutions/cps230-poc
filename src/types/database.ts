@@ -168,6 +168,7 @@ export interface Database {
           system_id: string | null
           regions: string[] | null
           control_type: string | null
+          pm_control_id: string | null
           modified_by: string
           modified_date: string
           created_at: string
@@ -182,6 +183,7 @@ export interface Database {
           system_id?: string | null
           regions?: string[] | null
           control_type?: string | null
+          pm_control_id?: string | null
           modified_by: string
           modified_date?: string
           created_at?: string
@@ -196,10 +198,37 @@ export interface Database {
           system_id?: string | null
           regions?: string[] | null
           control_type?: string | null
+          pm_control_id?: string | null
           modified_by?: string
           modified_date?: string
           created_at?: string
           account_id?: string | null
+        }
+      }
+      process_controls: {
+        Row: {
+          id: string
+          process_id: string
+          control_id: string
+          process_step: string | null
+          activity_description: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          process_id: string
+          control_id: string
+          process_step?: string | null
+          activity_description?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          process_id?: string
+          control_id?: string
+          process_step?: string | null
+          activity_description?: string | null
+          created_at?: string
         }
       }
       user_profiles: {
