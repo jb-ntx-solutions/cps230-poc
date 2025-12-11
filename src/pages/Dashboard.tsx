@@ -90,45 +90,47 @@ export default function Dashboard() {
 
   return (
     <AppLayout>
-      {isLoading ? (
-        <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
-        <div className="flex h-[calc(100vh-4rem)]">
-          {/* Filters Sidebar */}
-          <FiltersSidebar
-            systems={systems || []}
-            regions={regions}
-            controls={controls || []}
-            criticalOperations={criticalOperations || []}
-            selectedFilters={filters}
-            onFilterChange={setFilters}
-          />
-
-          {/* BPMN Canvas */}
-          <div className="flex-1 overflow-hidden">
-            {processes && processes.length > 0 ? (
-              <BpmnCanvas
-                processes={processes}
-                userRole={userRole as 'promaster' | 'business_analyst' | 'user'}
-                filters={filters}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center border-2 border-dashed border-muted-foreground/25 bg-muted/10">
-                <div className="text-center space-y-2">
-                  <p className="text-lg font-medium text-muted-foreground">
-                    No processes found
-                  </p>
-                  <p className="text-sm text-muted-foreground/75">
-                    Sync processes from Nintex Process Manager in Settings
-                  </p>
-                </div>
-              </div>
-            )}
+      <div className="-m-6 h-[calc(100vh-4rem)]">
+        {isLoading ? (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="flex h-full">
+            {/* Filters Sidebar */}
+            <FiltersSidebar
+              systems={systems || []}
+              regions={regions}
+              controls={controls || []}
+              criticalOperations={criticalOperations || []}
+              selectedFilters={filters}
+              onFilterChange={setFilters}
+            />
+
+            {/* BPMN Canvas */}
+            <div className="flex-1 overflow-hidden">
+              {processes && processes.length > 0 ? (
+                <BpmnCanvas
+                  processes={processes}
+                  userRole={userRole as 'promaster' | 'business_analyst' | 'user'}
+                  filters={filters}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center border-2 border-dashed border-muted-foreground/25 bg-muted/10">
+                  <div className="text-center space-y-2">
+                    <p className="text-lg font-medium text-muted-foreground">
+                      No processes found
+                    </p>
+                    <p className="text-sm text-muted-foreground/75">
+                      Sync processes from Nintex Process Manager in Settings
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </AppLayout>
   );
 }
