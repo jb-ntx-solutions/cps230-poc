@@ -46,10 +46,10 @@ export function FiltersSidebar({
   isSaving
 }: FiltersSidebarProps) {
   const [expandedSections, setExpandedSections] = useState({
-    systems: true,
-    regions: true,
+    criticalOps: true,
     controls: false,
-    criticalOps: false
+    systems: false,
+    regions: false
   });
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -146,6 +146,96 @@ export function FiltersSidebar({
 
       {/* Filter Sections */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Critical Operations Filter */}
+        <Card>
+          <CardHeader className="p-3 cursor-pointer" onClick={() => toggleSection('criticalOps')}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {expandedSections.criticalOps ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                <CardTitle className="text-sm">Critical Operations</CardTitle>
+              </div>
+              {selectedFilters.criticalOperations.length > 0 && (
+                <Badge variant="destructive" className="text-xs">
+                  {selectedFilters.criticalOperations.length}
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          {expandedSections.criticalOps && (
+            <CardContent className="p-3 pt-0 space-y-2">
+              {filteredCriticalOps.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No critical operations found</p>
+              ) : (
+                filteredCriticalOps.map((op) => (
+                  <div key={op.id} className="flex items-start space-x-2">
+                    <Checkbox
+                      id={`criticalop-${op.id}`}
+                      checked={selectedFilters.criticalOperations.includes(op.id)}
+                      onCheckedChange={() => handleCriticalOpToggle(op.id)}
+                      className="mt-0.5"
+                    />
+                    <Label
+                      htmlFor={`criticalop-${op.id}`}
+                      className="text-sm font-normal cursor-pointer flex-1 break-words leading-tight"
+                    >
+                      {op.operation_name}
+                    </Label>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          )}
+        </Card>
+
+        {/* Controls Filter */}
+        <Card>
+          <CardHeader className="p-3 cursor-pointer" onClick={() => toggleSection('controls')}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {expandedSections.controls ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                <CardTitle className="text-sm">Controls</CardTitle>
+              </div>
+              {selectedFilters.controls.length > 0 && (
+                <Badge variant="default" className="text-xs bg-blue-600">
+                  {selectedFilters.controls.length}
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          {expandedSections.controls && (
+            <CardContent className="p-3 pt-0 space-y-2">
+              {filteredControls.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No controls found</p>
+              ) : (
+                filteredControls.map((control) => (
+                  <div key={control.id} className="flex items-start space-x-2">
+                    <Checkbox
+                      id={`control-${control.id}`}
+                      checked={selectedFilters.controls.includes(control.id)}
+                      onCheckedChange={() => handleControlToggle(control.id)}
+                      className="mt-0.5"
+                    />
+                    <Label
+                      htmlFor={`control-${control.id}`}
+                      className="text-sm font-normal cursor-pointer flex-1 break-words leading-tight"
+                    >
+                      {control.control_name || control.control_id || 'Unnamed Control'}
+                    </Label>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          )}
+        </Card>
+
         {/* Systems Filter */}
         <Card>
           <CardHeader className="p-3 cursor-pointer" onClick={() => toggleSection('systems')}>
@@ -228,96 +318,6 @@ export function FiltersSidebar({
                       className="text-sm font-normal cursor-pointer flex-1 break-words leading-tight"
                     >
                       {region}
-                    </Label>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          )}
-        </Card>
-
-        {/* Controls Filter */}
-        <Card>
-          <CardHeader className="p-3 cursor-pointer" onClick={() => toggleSection('controls')}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {expandedSections.controls ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-                <CardTitle className="text-sm">Controls</CardTitle>
-              </div>
-              {selectedFilters.controls.length > 0 && (
-                <Badge variant="default" className="text-xs bg-blue-600">
-                  {selectedFilters.controls.length}
-                </Badge>
-              )}
-            </div>
-          </CardHeader>
-          {expandedSections.controls && (
-            <CardContent className="p-3 pt-0 space-y-2">
-              {filteredControls.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No controls found</p>
-              ) : (
-                filteredControls.map((control) => (
-                  <div key={control.id} className="flex items-start space-x-2">
-                    <Checkbox
-                      id={`control-${control.id}`}
-                      checked={selectedFilters.controls.includes(control.id)}
-                      onCheckedChange={() => handleControlToggle(control.id)}
-                      className="mt-0.5"
-                    />
-                    <Label
-                      htmlFor={`control-${control.id}`}
-                      className="text-sm font-normal cursor-pointer flex-1 break-words leading-tight"
-                    >
-                      {control.control_name || control.control_id || 'Unnamed Control'}
-                    </Label>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          )}
-        </Card>
-
-        {/* Critical Operations Filter */}
-        <Card>
-          <CardHeader className="p-3 cursor-pointer" onClick={() => toggleSection('criticalOps')}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {expandedSections.criticalOps ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-                <CardTitle className="text-sm">Critical Operations</CardTitle>
-              </div>
-              {selectedFilters.criticalOperations.length > 0 && (
-                <Badge variant="destructive" className="text-xs">
-                  {selectedFilters.criticalOperations.length}
-                </Badge>
-              )}
-            </div>
-          </CardHeader>
-          {expandedSections.criticalOps && (
-            <CardContent className="p-3 pt-0 space-y-2">
-              {filteredCriticalOps.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No critical operations found</p>
-              ) : (
-                filteredCriticalOps.map((op) => (
-                  <div key={op.id} className="flex items-start space-x-2">
-                    <Checkbox
-                      id={`criticalop-${op.id}`}
-                      checked={selectedFilters.criticalOperations.includes(op.id)}
-                      onCheckedChange={() => handleCriticalOpToggle(op.id)}
-                      className="mt-0.5"
-                    />
-                    <Label
-                      htmlFor={`criticalop-${op.id}`}
-                      className="text-sm font-normal cursor-pointer flex-1 break-words leading-tight"
-                    >
-                      {op.operation_name}
                     </Label>
                   </div>
                 ))
