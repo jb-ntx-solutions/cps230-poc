@@ -339,6 +339,11 @@ export function BpmnCanvas({
             stroke: #ef4444 !important;
             stroke-width: 2 !important;
           }
+
+          /* Hide BPMN.io logo/reference */
+          .bjs-powered-by {
+            display: none !important;
+          }
         `}</style>
       </div>
 

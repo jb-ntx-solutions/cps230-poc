@@ -70,6 +70,13 @@ export default class CustomPaletteProvider {
       create.start(event, shape);
     }
 
+    function createGroup(event: any) {
+      const shape = elementFactory.createShape({
+        type: 'bpmn:Group'
+      });
+      create.start(event, shape);
+    }
+
     const entries: any = {};
 
     // Hand tool - always available
@@ -136,6 +143,17 @@ export default class CustomPaletteProvider {
         action: {
           dragstart: createCallActivity,
           click: createCallActivity
+        }
+      };
+
+      // Group - for visual organization
+      entries['create.group'] = {
+        group: 'activity',
+        className: 'bpmn-icon-group',
+        title: translate('Create Group'),
+        action: {
+          dragstart: createGroup,
+          click: createGroup
         }
       };
     }

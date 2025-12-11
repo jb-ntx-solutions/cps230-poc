@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { X, Copy, Check } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { X, Copy, Check, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { useSettings } from '@/hooks/useSettings';
 import { toast } from 'sonner';
 
@@ -36,8 +36,13 @@ export function ProcessPropertiesPanel({
   onClose,
   readOnly = false
 }: ProcessPropertiesPanelProps) {
-  const [searchQuery, setSearchQuery] = useState('');
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [openSections, setOpenSections] = useState({
+    criticalOps: true,
+    controls: false,
+    systems: false,
+    regions: false
+  });
 
   // Get site URL and tenant ID from settings
   const { data: settings } = useSettings(['pm_site_url', 'pm_tenant_id']);
@@ -52,14 +57,12 @@ export function ProcessPropertiesPanel({
 
   const selectedProcess = processes.find(p => p.id === selectedProcessId);
 
-  // Filter processes based on search
-  const filteredProcesses = processes.filter(p =>
-    p.process_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.process_unique_id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   const handleProcessSelect = (processId: string) => {
     onProcessLink(processId);
+  };
+
+  const toggleSection = (section: keyof typeof openSections) => {
+    setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
   // Construct full process URL: baseUrl + /Process/{uniqueId}
@@ -103,80 +106,58 @@ export function ProcessPropertiesPanel({
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Process Search & Selector - only for editors */}
+          {/* Process Selector - only for editors */}
           {!readOnly && (
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label>Search Process</Label>
-                <Input
-                  placeholder="Search by name or ID..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="text-sm"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Select Process</Label>
-                <Select value={selectedProcessId || undefined} onValueChange={handleProcessSelect}>
-                  <SelectTrigger className="text-sm">
-                    <SelectValue placeholder="Select a process..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredProcesses.length === 0 ? (
-                      <div className="p-2 text-sm text-muted-foreground">
-                        No processes found
-                      </div>
-                    ) : (
-                      filteredProcesses.map((process) => (
-                        <SelectItem key={process.id} value={process.id} className="text-sm">
-                          <div className="flex flex-col">
-                            <span>{process.process_name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {process.process_unique_id}
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label>Select Process</Label>
+              <Select value={selectedProcessId || undefined} onValueChange={handleProcessSelect}>
+                <SelectTrigger className="text-sm">
+                  <SelectValue placeholder="Select a process..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {processes.length === 0 ? (
+                    <div className="p-2 text-sm text-muted-foreground">
+                      No processes found
+                    </div>
+                  ) : (
+                    processes.map((process) => (
+                      <SelectItem key={process.id} value={process.id} className="text-sm">
+                        {process.process_name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
           {/* Process Details */}
           {selectedProcess && (
             <div className={readOnly ? "space-y-4" : "border-t pt-4 space-y-4"}>
-              {/* Process Name */}
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Process Name</Label>
-                <p className="text-sm font-medium">{selectedProcess.process_name}</p>
-              </div>
-
-              {/* Process URL */}
+              {/* Process Name with URL */}
               <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Process URL</Label>
-                <div className="flex gap-2 items-start">
+                <Label className="text-xs text-muted-foreground">Process Name</Label>
+                <div className="flex items-center gap-2">
                   <a
                     href={processUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-1 text-xs font-mono text-primary hover:underline break-all bg-muted p-2 rounded border border-input"
+                    className="text-sm font-medium text-primary hover:underline flex items-center gap-1 flex-1"
                   >
-                    {processUrl}
+                    {selectedProcess.process_name}
+                    <ExternalLink className="h-3 w-3" />
                   </a>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="icon"
                     onClick={handleCopyUrl}
                     title="Copy URL"
-                    className="shrink-0"
+                    className="h-8 w-8 shrink-0"
                   >
                     {copiedUrl ? (
-                      <Check className="h-4 w-4 text-green-600" />
+                      <Check className="h-3 w-3 text-green-600" />
                     ) : (
-                      <Copy className="h-4 w-4" />
+                      <Copy className="h-3 w-3" />
                     )}
                   </Button>
                 </div>
@@ -190,14 +171,6 @@ export function ProcessPropertiesPanel({
                 </p>
               </div>
 
-              {/* PM Process ID */}
-              {selectedProcess.pm_process_id && (
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">PM Process ID</Label>
-                  <p className="text-sm font-mono">{selectedProcess.pm_process_id}</p>
-                </div>
-              )}
-
               {/* Owner */}
               {selectedProcess.owner_username && (
                 <div className="space-y-1">
@@ -206,60 +179,116 @@ export function ProcessPropertiesPanel({
                 </div>
               )}
 
-              {/* Regions */}
-              {selectedProcess.regions && selectedProcess.regions.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Regions</Label>
-                  <div className="flex flex-wrap gap-1">
-                    {selectedProcess.regions.map((region) => (
-                      <Badge key={region} variant="secondary" className="text-xs">
-                        {region}
+              {/* Critical Operations */}
+              {selectedProcess.criticalOperations && selectedProcess.criticalOperations.length > 0 && (
+                <Collapsible open={openSections.criticalOps} onOpenChange={() => toggleSection('criticalOps')}>
+                  <CollapsibleTrigger className="flex items-center justify-between w-full hover:bg-muted/50 p-2 rounded -mx-2">
+                    <Label className="text-xs text-muted-foreground cursor-pointer">Critical Operations</Label>
+                    <div className="flex items-center gap-1">
+                      <Badge variant="destructive" className="text-xs">
+                        {selectedProcess.criticalOperations.length}
                       </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Systems */}
-              {selectedProcess.systems && selectedProcess.systems.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Related Systems</Label>
-                  <div className="flex flex-col gap-1">
-                    {selectedProcess.systems.map((system) => (
-                      <Badge key={system.id} variant="outline" className="text-xs justify-start">
-                        {system.system_name}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                      {openSections.criticalOps ? (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2">
+                    <div className="flex flex-col gap-1">
+                      {selectedProcess.criticalOperations.map((operation) => (
+                        <Badge key={operation.id} variant="destructive" className="text-xs justify-start">
+                          {operation.operation_name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
 
               {/* Controls */}
               {selectedProcess.controls && selectedProcess.controls.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Related Controls</Label>
-                  <div className="flex flex-col gap-1">
-                    {selectedProcess.controls.map((control) => (
-                      <Badge key={control.id} variant="outline" className="text-xs justify-start">
-                        {control.control_name}
+                <Collapsible open={openSections.controls} onOpenChange={() => toggleSection('controls')}>
+                  <CollapsibleTrigger className="flex items-center justify-between w-full hover:bg-muted/50 p-2 rounded -mx-2">
+                    <Label className="text-xs text-muted-foreground cursor-pointer">Related Controls</Label>
+                    <div className="flex items-center gap-1">
+                      <Badge variant="default" className="text-xs bg-blue-600">
+                        {selectedProcess.controls.length}
                       </Badge>
-                    ))}
-                  </div>
-                </div>
+                      {openSections.controls ? (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2">
+                    <div className="flex flex-col gap-1">
+                      {selectedProcess.controls.map((control) => (
+                        <Badge key={control.id} variant="outline" className="text-xs justify-start">
+                          {control.control_name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
 
-              {/* Critical Operations */}
-              {selectedProcess.criticalOperations && selectedProcess.criticalOperations.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Critical Operations</Label>
-                  <div className="flex flex-col gap-1">
-                    {selectedProcess.criticalOperations.map((operation) => (
-                      <Badge key={operation.id} variant="destructive" className="text-xs justify-start">
-                        {operation.operation_name}
+              {/* Systems */}
+              {selectedProcess.systems && selectedProcess.systems.length > 0 && (
+                <Collapsible open={openSections.systems} onOpenChange={() => toggleSection('systems')}>
+                  <CollapsibleTrigger className="flex items-center justify-between w-full hover:bg-muted/50 p-2 rounded -mx-2">
+                    <Label className="text-xs text-muted-foreground cursor-pointer">Related Systems</Label>
+                    <div className="flex items-center gap-1">
+                      <Badge variant="default" className="text-xs bg-green-600">
+                        {selectedProcess.systems.length}
                       </Badge>
-                    ))}
-                  </div>
-                </div>
+                      {openSections.systems ? (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2">
+                    <div className="flex flex-col gap-1">
+                      {selectedProcess.systems.map((system) => (
+                        <Badge key={system.id} variant="outline" className="text-xs justify-start">
+                          {system.system_name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+
+              {/* Regions */}
+              {selectedProcess.regions && selectedProcess.regions.length > 0 && (
+                <Collapsible open={openSections.regions} onOpenChange={() => toggleSection('regions')}>
+                  <CollapsibleTrigger className="flex items-center justify-between w-full hover:bg-muted/50 p-2 rounded -mx-2">
+                    <Label className="text-xs text-muted-foreground cursor-pointer">Regions</Label>
+                    <div className="flex items-center gap-1">
+                      <Badge variant="secondary" className="text-xs">
+                        {selectedProcess.regions.length}
+                      </Badge>
+                      {openSections.regions ? (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2">
+                    <div className="flex flex-wrap gap-1">
+                      {selectedProcess.regions.map((region) => (
+                        <Badge key={region} variant="secondary" className="text-xs">
+                          {region}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
             </div>
           )}
