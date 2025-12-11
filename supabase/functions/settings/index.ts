@@ -19,7 +19,20 @@ serve(async (req) => {
     const url = new URL(req.url)
 
     // Whitelist allowed setting keys
-    const ALLOWED_KEYS = ['regions', 'bpmn_diagram', 'sync_frequency', 'last_sync_timestamp', 'nintex_api_url', 'nintex_username', 'nintex_password', 'nintex_tenant_id']
+    const ALLOWED_KEYS = [
+      'regions',
+      'bpmn_diagram',
+      'sync_frequency',
+      'last_sync_timestamp',
+      'nintex_api_url',
+      'nintex_username',
+      'nintex_password',
+      'nintex_tenant_id',
+      'pm_site_url',
+      'pm_username',
+      'pm_password',
+      'pm_tenant_id'
+    ]
     const validKeys = url.searchParams.get('keys') ? validateKeys(url.searchParams.get('keys'), ALLOWED_KEYS) : ALLOWED_KEYS
 
     switch (req.method) {
