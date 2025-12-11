@@ -110,6 +110,9 @@ export function isEncrypted(value: string): boolean {
 export function shouldEncrypt(key: string): boolean {
   const sensitiveKeys = [
     'nintex_password',
+    'pm_password',
+    'pm_username',
+    'pm_tenant_id',
     'api_key',
     'secret',
     'token',
