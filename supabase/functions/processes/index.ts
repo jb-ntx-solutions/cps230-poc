@@ -42,10 +42,16 @@ serve(async (req) => {
             `)
             .eq('process_id', id)
 
-          // Get associated controls
-          const { data: controls } = await supabaseClient
-            .from('controls')
-            .select('id, control_name')
+          // Get associated controls via junction table
+          const { data: processControls } = await supabaseClient
+            .from('process_controls')
+            .select(`
+              control_id,
+              controls:control_id (
+                id,
+                control_name
+              )
+            `)
             .eq('process_id', id)
 
           // Get associated critical operations
@@ -57,7 +63,7 @@ serve(async (req) => {
           const processWithSystems = {
             ...process,
             systems: processSystems?.map(ps => ps.systems).filter(Boolean) || [],
-            controls: controls || [],
+            controls: processControls?.map(pc => pc.controls).filter(Boolean) || [],
             criticalOperations: criticalOperations || [],
           }
 
@@ -87,9 +93,15 @@ serve(async (req) => {
                 `)
                 .eq('process_id', process.id)
 
-              const { data: controls } = await supabaseClient
-                .from('controls')
-                .select('id, control_name')
+              const { data: processControls } = await supabaseClient
+                .from('process_controls')
+                .select(`
+                  control_id,
+                  controls:control_id (
+                    id,
+                    control_name
+                  )
+                `)
                 .eq('process_id', process.id)
 
               const { data: criticalOperations } = await supabaseClient
@@ -100,7 +112,7 @@ serve(async (req) => {
               return {
                 ...process,
                 systems: processSystems?.map(ps => ps.systems).filter(Boolean) || [],
-                controls: controls || [],
+                controls: processControls?.map(pc => pc.controls).filter(Boolean) || [],
                 criticalOperations: criticalOperations || [],
               }
             })

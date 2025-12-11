@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
+import { decryptValue, shouldEncrypt } from '../_shared/encryption.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -501,11 +502,34 @@ serve(async (req) => {
       throw new Error(`Process Manager configuration incomplete. Found ${settingsData?.length || 0} of 4 required settings. Please configure in settings.`)
     }
 
+    // Decrypt sensitive settings values
+    const decryptedSettings = await Promise.all(
+      settingsData.map(async (setting) => {
+        // Parse value from JSONB (remove quotes if it's a JSON string)
+        let parsedValue = setting.value
+        if (typeof parsedValue === 'string' && parsedValue.startsWith('"') && parsedValue.endsWith('"')) {
+          parsedValue = JSON.parse(parsedValue)
+        }
+
+        if (shouldEncrypt(setting.key) && parsedValue) {
+          try {
+            const decryptedValue = await decryptValue(parsedValue as string)
+            return { ...setting, value: decryptedValue }
+          } catch (e) {
+            // If decryption fails, value might not be encrypted yet
+            console.error(`Failed to decrypt ${setting.key}`)
+            return { ...setting, value: parsedValue }
+          }
+        }
+        return { ...setting, value: parsedValue }
+      })
+    )
+
     const config: ProcessManagerConfig = {
-      siteUrl: settingsData.find(s => s.key === 'pm_site_url')?.value as string,
-      username: settingsData.find(s => s.key === 'pm_username')?.value as string,
-      password: settingsData.find(s => s.key === 'pm_password')?.value as string,
-      tenantId: settingsData.find(s => s.key === 'pm_tenant_id')?.value as string,
+      siteUrl: decryptedSettings.find(s => s.key === 'pm_site_url')?.value as string,
+      username: decryptedSettings.find(s => s.key === 'pm_username')?.value as string,
+      password: decryptedSettings.find(s => s.key === 'pm_password')?.value as string,
+      tenantId: decryptedSettings.find(s => s.key === 'pm_tenant_id')?.value as string,
     }
 
     // Check if there's a failed sync that should be resumed

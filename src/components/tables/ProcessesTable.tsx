@@ -112,6 +112,25 @@ export function ProcessesTable() {
       },
     },
     {
+      accessorKey: 'controls',
+      header: 'Controls',
+      cell: ({ row }) => {
+        const controls = row.original.controls || [];
+        if (controls.length === 0) {
+          return <span className="text-muted-foreground text-sm">—</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1">
+            {controls.map((control) => (
+              <Badge key={control.id} variant="default" className="text-xs bg-blue-600">
+                {control.control_name}
+              </Badge>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
       accessorKey: 'regions',
       header: 'Regions',
       cell: ({ row }) => {
