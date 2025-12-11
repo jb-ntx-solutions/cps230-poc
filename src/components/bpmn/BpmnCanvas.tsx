@@ -179,42 +179,59 @@ export function BpmnCanvas({
 
       if (!processData) return;
 
-      // Priority: Critical Operations > Controls > Systems
-      let applied = false;
+      // Priority: Critical Operations > Controls (borders only)
+      let borderApplied = false;
 
-      // Check Critical Operations (RED border - highest priority)
-      if (!applied && filters.criticalOperations.length > 0) {
+      // Check Critical Operations (RED fill - highest priority)
+      if (!borderApplied && filters.criticalOperations.length > 0) {
         const matchesCriticalOp = processData.criticalOperations?.some(co =>
           filters.criticalOperations.includes(co.id)
         );
 
         if (matchesCriticalOp) {
           canvas.addMarker(element, 'highlight-critical');
-          applied = true;
+          borderApplied = true;
         }
       }
 
       // Check Controls (BLUE border - second priority)
-      if (!applied && filters.controls.length > 0) {
+      if (!borderApplied && filters.controls.length > 0) {
         const matchesControl = processData.controls?.some(ctrl =>
           filters.controls.includes(ctrl.id)
         );
 
         if (matchesControl) {
           canvas.addMarker(element, 'highlight-control');
-          applied = true;
+          borderApplied = true;
         }
       }
 
-      // Check Systems (GREEN border - third priority)
-      if (!applied && filters.systems.length > 0) {
-        const matchesSystem = processData.systems?.some(sys =>
+      // Check Systems (GREEN overlay labels - independent of border)
+      if (filters.systems.length > 0 && processData.systems) {
+        const matchedSystems = processData.systems.filter(sys =>
           filters.systems.includes(sys.id)
         );
 
-        if (matchesSystem) {
-          canvas.addMarker(element, 'highlight-system');
-          applied = true;
+        if (matchedSystems.length > 0) {
+          const systemsHtml = `
+            <div style="
+              background: rgba(16, 185, 129, 0.9);
+              color: white;
+              padding: 2px 6px;
+              border-radius: 3px;
+              font-size: 10px;
+              font-weight: 500;
+              white-space: nowrap;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            ">
+              ${matchedSystems.map(s => s.system_name).join(', ')}
+            </div>
+          `;
+
+          overlays.add(element, {
+            position: { bottom: -5, right: 10 },
+            html: systemsHtml
+          });
         }
       }
 
@@ -312,19 +329,15 @@ export function BpmnCanvas({
 
         {/* Add custom CSS for highlighting */}
         <style>{`
-          .highlight-system .djs-visual > :nth-child(1) {
-            stroke: #10b981 !important;
-            stroke-width: 4 !important;
-          }
-
           .highlight-control .djs-visual > :nth-child(1) {
             stroke: #3b82f6 !important;
             stroke-width: 4 !important;
           }
 
           .highlight-critical .djs-visual > :nth-child(1) {
+            fill: rgba(239, 68, 68, 0.3) !important;
             stroke: #ef4444 !important;
-            stroke-width: 4 !important;
+            stroke-width: 2 !important;
           }
         `}</style>
       </div>
