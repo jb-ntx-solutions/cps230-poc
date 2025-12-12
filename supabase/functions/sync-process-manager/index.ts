@@ -7,8 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const BATCH_SIZE = 100 // Process 100 processes per batch to avoid timeout
-const MAX_EXECUTION_TIME = 8 * 60 * 1000 // 8 minutes max (leave 2 min buffer before 10min timeout)
+const PROCESSES_PER_CALL = 5 // Process only 5 processes per function call (very conservative)
 
 interface ProcessManagerConfig {
   siteUrl: string
@@ -21,17 +20,6 @@ interface ProcessManagerAuthResponse {
   access_token: string
   token_type: string
   expires_in: number
-}
-
-interface ProcessListResponse {
-  items: Array<{
-    processId: number
-    processName: string
-    processUniqueId: string
-    processOwner: string | null
-    groupName: string | null
-  }>
-  totalItemCount: number
 }
 
 interface ProcessDetailResponse {
@@ -69,12 +57,6 @@ interface ProcessDetailResponse {
       }>
     }
   }
-}
-
-interface SearchAuthResponse {
-  access_token: string
-  token_type: string
-  expires_in: number
 }
 
 interface SearchResult {
@@ -215,17 +197,11 @@ async function searchCPS230Processes(
       throw new Error('Search API returned unsuccessful response')
     }
 
-    // Log first result for debugging
-    if (data.response && data.response.length > 0) {
-      console.log(`First result sample: ${JSON.stringify(data.response[0]).substring(0, 300)}`)
-    }
-
     // Filter results that have CPS230 in highlights
     const cps230Processes = data.response.filter(result => {
       const highlights = result.HighLights
       if (!highlights) {
-        console.log(`Result ${result.Name} has no HighLights, including it anyway since search returned it`)
-        return true // If search returned it for "CPS230", include it even without highlights
+        return true // If search returned it for "CPS230", include it
       }
 
       // Check all highlight types for #CPS230
@@ -236,35 +212,25 @@ async function searchCPS230Processes(
         ...(highlights.ProcessTags || []),
       ].join(' ')
 
-      const hasCPS230 = allHighlights.includes('#CPS230') || allHighlights.includes('#cps230') || allHighlights.includes('CPS230')
-      if (!hasCPS230) {
-        console.log(`Result ${result.Name} highlights don't contain #CPS230: ${allHighlights.substring(0, 100)}`)
-      }
-      return hasCPS230
+      return allHighlights.includes('#CPS230') || allHighlights.includes('#cps230') || allHighlights.includes('CPS230')
     })
-
-    console.log(`Filtered to ${cps230Processes.length} processes with CPS230 in highlights`)
 
     // Extract unique IDs from ProcessUniqueId or ItemUrl
     const uniqueIds = cps230Processes
       .map(p => {
-        // Try ProcessUniqueId first
         if (p.ProcessUniqueId) {
           return p.ProcessUniqueId
         }
-        // Extract from ItemUrl if ProcessUniqueId not available
         if (p.ItemUrl) {
           const match = p.ItemUrl.match(/\/Process\/([a-f0-9-]+)/i)
           if (match && match[1]) {
             return match[1]
           }
         }
-        console.log(`Could not extract ID for process: ${p.Name}`)
         return null
       })
       .filter(id => id) // Filter out any null/undefined
 
-    console.log(`Extracted ${uniqueIds.length} unique IDs`)
     allProcessUniqueIds.push(...uniqueIds as string[])
 
     // Check if there are more pages
@@ -273,39 +239,6 @@ async function searchCPS230Processes(
   }
 
   return allProcessUniqueIds
-}
-
-// Fetch all processes from Process Manager (with pagination)
-async function fetchAllProcesses(
-  config: ProcessManagerConfig,
-  bearerToken: string
-): Promise<ProcessListResponse['items']> {
-  const baseUrl = `https://${config.siteUrl}/${config.tenantId}/Bff/Process/api/v1/processes`
-  let allProcesses: ProcessListResponse['items'] = []
-  let page = 1
-  const pageSize = 100
-  let hasMore = true
-
-  while (hasMore) {
-    const url = `${baseUrl}?Page=${page}&PageSize=${pageSize}`
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${bearerToken}`,
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch processes: ${response.statusText}`)
-    }
-
-    const data: ProcessListResponse = await response.json()
-    allProcesses = allProcesses.concat(data.items)
-
-    hasMore = allProcesses.length < data.totalItemCount
-    page++
-  }
-
-  return allProcesses
 }
 
 // Fetch process details including tags and systems
@@ -335,7 +268,6 @@ function extractSystemTags(processDetail: ProcessDetailResponse): Array<{ id: nu
   const activities = processDetail.processJson.ProcessProcedures?.Activity || []
 
   for (const activity of activities) {
-    // Check activity-level tags
     const activityTags = activity.Ownerships?.Tag || []
     for (const tag of activityTags) {
       if (tag.TagFamilyName === 'System') {
@@ -343,7 +275,6 @@ function extractSystemTags(processDetail: ProcessDetailResponse): Array<{ id: nu
       }
     }
 
-    // Check task-level tags
     const tasks = activity.ChildProcessProcedures?.Task || []
     for (const task of tasks) {
       const taskTags = task.Ownerships?.Tag || []
@@ -359,71 +290,33 @@ function extractSystemTags(processDetail: ProcessDetailResponse): Array<{ id: nu
 }
 
 // Extract control references from process details
-// Looks for pattern: #GRC_Control C-XXXX [optional description]
 function extractControls(processDetail: ProcessDetailResponse): Array<{ id: string; name: string }> {
   const controls = new Map<string, string>()
-  // Regex to match #GRC_Control C-XXXX pattern
   const controlPattern = /#GRC_Control\s+(C-\d+)/gi
 
   const activities = processDetail.processJson.ProcessProcedures?.Activity || []
-  const decisions = processDetail.processJson.ProcessProcedures?.Decision || []
 
-  // Helper function to extract controls from text
   const extractFromText = (text: string | null) => {
     if (!text) return
     let match
     while ((match = controlPattern.exec(text)) !== null) {
-      const controlId = match[1] // e.g., "C-3466"
+      const controlId = match[1]
       controls.set(controlId, controlId)
     }
   }
 
-  // Search through activities
   for (const activity of activities) {
-    // Check activity text
     extractFromText(activity.Text)
-
-    // Check activity attachment
     extractFromText(activity.Attachment)
 
-    // Check tasks
     const tasks = activity.ChildProcessProcedures?.Task || []
     for (const task of tasks) {
       extractFromText(task.Text)
       extractFromText(task.Attachment)
     }
-
-    // Check notes
-    const notes = activity.ChildProcessProcedures?.Note || []
-    for (const note of notes) {
-      extractFromText(note.Text)
-      extractFromText(note.Attachment)
-    }
-
-    // Check other procedure types that might contain control references
-    const procedureTypes = ['Information', 'Form', 'Guide', 'Policy', 'Training']
-    for (const type of procedureTypes) {
-      const procedures = activity.ChildProcessProcedures?.[type] || []
-      for (const procedure of procedures) {
-        extractFromText(procedure.Text)
-        extractFromText(procedure.Attachment)
-      }
-    }
-  }
-
-  // Search through decisions
-  for (const decision of decisions) {
-    extractFromText(decision.Text)
-    extractFromText(decision.Attachment)
   }
 
   return Array.from(controls.entries()).map(([id, name]) => ({ id, name }))
-}
-
-// Check if process has CPS230 tag
-function hasCPS230Tag(processDetail: ProcessDetailResponse): boolean {
-  const processTags = processDetail.processJson.ProcessTags?.ProcessTag || []
-  return processTags.some(tag => tag.Name === 'CPS230')
 }
 
 serve(async (req) => {
@@ -437,7 +330,9 @@ serve(async (req) => {
       throw new Error('Missing authorization header')
     }
 
-    // Extract the JWT token from the Authorization header
+    const url = new URL(req.url)
+    const mode = url.searchParams.get('mode') || 'init' // 'init' or 'process'
+
     const token = authHeader.replace('Bearer ', '')
 
     const supabaseClient = createClient(
@@ -455,14 +350,10 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
-    // Verify user is a Promaster - use getUser with the token
+    // Verify user is a Promaster
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
-    if (userError) {
-      console.error('Auth error:', userError)
-      throw new Error(`Authentication failed: ${userError.message}`)
-    }
-    if (!user) {
-      throw new Error('No authenticated user found')
+    if (userError || !user) {
+      throw new Error(`Authentication failed: ${userError?.message || 'No user found'}`)
     }
 
     const { data: profile, error: profileError } = await supabaseClient
@@ -471,41 +362,28 @@ serve(async (req) => {
       .eq('user_id', user.id)
       .single()
 
-    if (profileError) {
-      console.error('Profile query error:', profileError)
-      throw new Error(`Failed to fetch user profile: ${profileError.message}`)
-    }
-
-    if (!profile) {
-      throw new Error('User profile not found')
+    if (profileError || !profile) {
+      throw new Error(`Failed to fetch user profile: ${profileError?.message || 'No profile found'}`)
     }
 
     if (profile.role !== 'promaster') {
       throw new Error('Only Promasters can sync Process Manager data')
     }
 
-    // Get Process Manager configuration from settings
-    // Use OR condition to get settings that match account_id OR are null (for backwards compatibility)
+    // Get Process Manager configuration
     const { data: settingsData, error: settingsError } = await supabaseClient
       .from('settings')
       .select('key, value')
       .in('key', ['pm_site_url', 'pm_username', 'pm_password', 'pm_tenant_id'])
-      .or(`account_id.eq.${profile.account_id},account_id.is.null`)
+      .eq('account_id', profile.account_id)
 
-    if (settingsError) {
-      console.error('Settings query error:', settingsError)
-      throw new Error(`Failed to fetch settings: ${settingsError.message}`)
+    if (settingsError || !settingsData || settingsData.length < 4) {
+      throw new Error(`Process Manager configuration incomplete. Found ${settingsData?.length || 0} of 4 required settings.`)
     }
 
-    if (!settingsData || settingsData.length < 4) {
-      console.error('Settings data:', settingsData)
-      throw new Error(`Process Manager configuration incomplete. Found ${settingsData?.length || 0} of 4 required settings. Please configure in settings.`)
-    }
-
-    // Decrypt sensitive settings values
+    // Decrypt settings
     const decryptedSettings = await Promise.all(
       settingsData.map(async (setting) => {
-        // Parse value from JSONB (remove quotes if it's a JSON string)
         let parsedValue = setting.value
         if (typeof parsedValue === 'string' && parsedValue.startsWith('"') && parsedValue.endsWith('"')) {
           parsedValue = JSON.parse(parsedValue)
@@ -516,7 +394,6 @@ serve(async (req) => {
             const decryptedValue = await decryptValue(parsedValue as string)
             return { ...setting, value: decryptedValue }
           } catch (e) {
-            // If decryption fails, value might not be encrypted yet
             console.error(`Failed to decrypt ${setting.key}`)
             return { ...setting, value: parsedValue }
           }
@@ -532,521 +409,331 @@ serve(async (req) => {
       tenantId: decryptedSettings.find(s => s.key === 'pm_tenant_id')?.value as string,
     }
 
-    // Check if there's a failed sync that should be resumed
-    const { data: failedSync } = await supabaseAdmin
-      .from('sync_history')
-      .select('*')
-      .eq('account_id', profile.account_id)
-      .eq('status', 'failed')
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .single()
+    // ========================================================================
+    // MODE 1: INITIALIZE - Search for processes and populate queue
+    // ========================================================================
+    if (mode === 'init') {
+      console.log('MODE: INIT - Searching for CPS230 processes...')
 
-    let syncRecord
-    let isResume = false
+      // Authenticate
+      const bearerToken = await authenticateProcessManager(config)
+      const searchToken = await getSearchToken(config, bearerToken)
 
-    if (failedSync && failedSync.processed_pm_ids && failedSync.processed_pm_ids.length > 0) {
-      // Resume the failed sync
-      console.log(`Resuming failed sync ${failedSync.id} with ${failedSync.processed_pm_ids.length} already-processed processes`)
-      syncRecord = failedSync
-      isResume = true
+      // Search for CPS230 processes
+      const cps230ProcessUniqueIds = await searchCPS230Processes(config, searchToken)
 
-      // Update status back to in_progress
-      await supabaseAdmin
-        .from('sync_history')
-        .update({
-          status: 'in_progress',
-          error_message: null,
-        })
-        .eq('id', syncRecord.id)
-    } else {
-      // Create new sync history record
-      const { data: newSync } = await supabaseAdmin
+      console.log(`Found ${cps230ProcessUniqueIds.length} CPS230 processes`)
+
+      // Create sync record with process queue
+      const { data: syncRecord, error: syncError } = await supabaseAdmin
         .from('sync_history')
         .insert({
           sync_type: 'full',
           status: 'in_progress',
           initiated_by: profile.email,
           account_id: profile.account_id,
+          total_processes: cps230ProcessUniqueIds.length,
+          processed_count: 0,
+          process_queue: cps230ProcessUniqueIds,
         })
         .select()
         .single()
 
-      if (!newSync) {
-        throw new Error('Failed to create sync history record')
+      if (syncError || !syncRecord) {
+        throw new Error(`Failed to create sync record: ${syncError?.message}`)
       }
-      syncRecord = newSync
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          mode: 'init',
+          syncId: syncRecord.id,
+          totalProcesses: cps230ProcessUniqueIds.length,
+          message: `Found ${cps230ProcessUniqueIds.length} processes. Call with mode=process to start processing.`,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      )
     }
 
-    // Start the sync process asynchronously (don't await)
-    // This allows us to return immediately to the client
-    (async () => {
-      const startTime = Date.now()
+    // ========================================================================
+    // MODE 2: PROCESS - Process next batch from queue
+    // ========================================================================
+    if (mode === 'process') {
+      console.log(`MODE: PROCESS - Processing next ${PROCESSES_PER_CALL} processes...`)
 
-      try {
-        // Authenticate with Process Manager
-        const bearerToken = await authenticateProcessManager(config)
-
-        // Get search token
-        console.log('Getting search service token...')
-        const searchToken = await getSearchToken(config, bearerToken)
-
-        // Use Search API to find CPS230 processes (much faster than checking all processes!)
-        console.log('Searching for CPS230 processes using Search API...')
-        const cps230ProcessUniqueIds = await searchCPS230Processes(config, searchToken)
-
-        console.log(`Search API found ${cps230ProcessUniqueIds.length} processes with CPS230 tag`)
-
-        // Update sync record with total count
-        await supabaseAdmin
-          .from('sync_history')
-          .update({
-            total_processes: cps230ProcessUniqueIds.length,
-            processed_count: 0,
-          })
-          .eq('id', syncRecord.id)
-
-      let processesProcessed = 0
-      let systemsAdded = 0
-      let controlsAdded = 0
-      let totalProcessedCount = 0
-      const processedSystemIds = new Set<number>()
-      const processedControlIds = new Set<string>()
-
-      // Track existing processes and systems for cleanup
-      const { data: existingProcesses } = await supabaseAdmin
-        .from('processes')
-        .select('id, pm_process_id')
+      // Find active sync
+      const { data: syncRecord, error: syncError } = await supabaseAdmin
+        .from('sync_history')
+        .select('*')
         .eq('account_id', profile.account_id)
+        .eq('status', 'in_progress')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .single()
 
-      const existingPmProcessIds = new Set(
-        existingProcesses?.map(p => p.pm_process_id).filter(id => id !== null) || []
-      )
-
-      const syncedProcessIds = new Set<number>()
-      const examinedProcessIds = new Set<number>()
-
-      // If resuming, load already-processed unique IDs from sync record
-      const alreadyProcessedUniqueIds = new Set<string>(syncRecord.processed_pm_ids?.map(String) || [])
-
-      if (alreadyProcessedUniqueIds.size > 0) {
-        console.log(`Resuming sync ${syncRecord.id}. Skipping ${alreadyProcessedUniqueIds.size} already-processed processes.`)
-        // Add to tracking sets
-        alreadyProcessedUniqueIds.forEach(id => {
-          const numId = parseInt(id)
-          if (!isNaN(numId)) {
-            syncedProcessIds.add(numId)
+      if (syncError || !syncRecord) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'No active sync found. Call with mode=init first.',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
           }
-        })
+        )
       }
 
-      // Filter out already-processed unique IDs
-      const processesToSync = cps230ProcessUniqueIds.filter(uid => !alreadyProcessedUniqueIds.has(uid))
+      const processQueue = syncRecord.process_queue || []
+      const processedCount = syncRecord.processed_count || 0
 
-      console.log(`${processesToSync.length} processes to sync (${cps230ProcessUniqueIds.length} total, ${alreadyProcessedUniqueIds.size} already processed)`)
-
-      // Process in batches to avoid timeout
-      const totalBatches = Math.ceil(processesToSync.length / BATCH_SIZE)
-
-      for (let batchNum = 1; batchNum <= totalBatches; batchNum++) {
-        const startIdx = (batchNum - 1) * BATCH_SIZE
-        const endIdx = Math.min(startIdx + BATCH_SIZE, processesToSync.length)
-        const batchProcessUniqueIds = processesToSync.slice(startIdx, endIdx)
-
-        // Check if we're approaching timeout (8 minutes)
-        const elapsedTime = Date.now() - startTime
-        if (elapsedTime > MAX_EXECUTION_TIME) {
-          console.log(`Approaching timeout at ${elapsedTime}ms. Saving progress and will auto-retry...`)
-
-          // Save current progress
-          await supabaseAdmin
-            .from('sync_history')
-            .update({
-              status: 'failed',
-              error_message: `Timeout after processing ${processesProcessed} of ${processesToSync.length} CPS230 processes. Completed ${batchNum - 1} of ${totalBatches} batches. Click Sync Now to resume.`,
-              completed_at: new Date().toISOString(),
-              records_synced: processesProcessed,
-              last_processed_index: startIdx,
-              processed_pm_ids: Array.from(syncedProcessIds),
-              examined_pm_ids: Array.from(examinedProcessIds),
-            })
-            .eq('id', syncRecord.id)
-
-          console.log(`Progress saved. Processed ${processesProcessed} CPS230 processes. Next sync will resume from batch ${batchNum}.`)
-          return
-        }
-
-        console.log(`Processing batch ${batchNum}/${totalBatches} (processes ${startIdx + 1}-${endIdx} of ${processesToSync.length})`)
-
-        // Update batch info
+      // Check if done
+      if (processedCount >= processQueue.length) {
         await supabaseAdmin
           .from('sync_history')
           .update({
-            current_batch: batchNum,
-            total_batches: totalBatches,
-            batch_size: BATCH_SIZE,
+            status: 'success',
+            completed_at: new Date().toISOString(),
           })
           .eq('id', syncRecord.id)
 
-        // Process each process in this batch by unique ID
-        for (let i = 0; i < batchProcessUniqueIds.length; i++) {
-          const processUniqueId = batchProcessUniqueIds[i]
-          const globalIndex = startIdx + i
-
-          // Check if sync was cancelled every 10 processes
-          if (i % 10 === 0) {
-            const { data: currentSync } = await supabaseAdmin
-              .from('sync_history')
-              .select('status')
-              .eq('id', syncRecord.id)
-              .single()
-
-            if (currentSync?.status === 'cancelled') {
-              console.log(`Sync cancelled by user at process ${globalIndex}/${processesToSync.length}`)
-              await supabaseAdmin
-                .from('sync_history')
-                .update({
-                  completed_at: new Date().toISOString(),
-                  records_synced: processesProcessed,
-                  last_processed_index: globalIndex,
-                  processed_pm_ids: Array.from(syncedProcessIds),
-                  examined_pm_ids: Array.from(examinedProcessIds),
-                })
-                .eq('id', syncRecord.id)
-              return // Exit the sync process
-            }
+        return new Response(
+          JSON.stringify({
+            success: true,
+            mode: 'process',
+            completed: true,
+            totalProcessed: processedCount,
+            message: 'Sync completed!',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
           }
+        )
+      }
 
-          let processDetail: ProcessDetailResponse
-          try {
-            // Fetch full process details by unique ID
-            processDetail = await fetchProcessDetails(config, bearerToken, processUniqueId)
+      // Get next batch to process
+      const batchStart = processedCount
+      const batchEnd = Math.min(batchStart + PROCESSES_PER_CALL, processQueue.length)
+      const batchProcessIds = processQueue.slice(batchStart, batchEnd)
 
-            // Increment total processed count
-            totalProcessedCount++
+      console.log(`Processing processes ${batchStart + 1}-${batchEnd} of ${processQueue.length}`)
 
-            // Update progress every 10 processes
-            if (totalProcessedCount % 10 === 0 || totalProcessedCount === processesToSync.length) {
-              console.log(`Progress: ${totalProcessedCount}/${processesToSync.length} CPS230 processes synced`)
-              await supabaseAdmin
-                .from('sync_history')
-                .update({
-                  processed_count: totalProcessedCount,
-                })
-                .eq('id', syncRecord.id)
-            }
+      // Authenticate
+      const bearerToken = await authenticateProcessManager(config)
 
-            // All processes from search have CPS230 tag, no need to check again
-          } catch (error: any) {
-            console.error(`Failed to fetch process ${globalIndex}/${processesToSync.length} (${processUniqueId}):`, error?.message || error)
-            totalProcessedCount++
-            continue
-          }
+      // Process each process in batch
+      let successCount = 0
+      for (const processUniqueId of batchProcessIds) {
+        try {
+          const processDetail = await fetchProcessDetails(config, bearerToken, processUniqueId)
 
-        syncedProcessIds.add(processDetail.processJson.Id)
-        examinedProcessIds.add(processDetail.processJson.Id)
+          // Extract and upsert systems
+          const systemTags = extractSystemTags(processDetail)
+          const processSystemIds: string[] = []
 
-        // Extract and save systems
-        const systemTags = extractSystemTags(processDetail)
-        const processSystemIds: string[] = []
-
-        for (const systemTag of systemTags) {
-          if (processedSystemIds.has(systemTag.id)) {
-            // System already processed, just get its UUID
+          for (const systemTag of systemTags) {
             const { data: existingSystem } = await supabaseAdmin
               .from('systems')
               .select('id')
               .eq('pm_tag_id', systemTag.id.toString())
               .eq('account_id', profile.account_id)
-              .single()
+              .maybeSingle()
 
+            let system
             if (existingSystem) {
-              processSystemIds.push(existingSystem.id)
+              const result = await supabaseAdmin
+                .from('systems')
+                .update({
+                  system_name: systemTag.name,
+                  system_id: systemTag.id.toString(),
+                  modified_by: profile.email,
+                })
+                .eq('id', existingSystem.id)
+                .select()
+                .single()
+              system = result.data
+            } else {
+              const result = await supabaseAdmin
+                .from('systems')
+                .insert({
+                  system_name: systemTag.name,
+                  system_id: systemTag.id.toString(),
+                  pm_tag_id: systemTag.id.toString(),
+                  modified_by: profile.email,
+                  account_id: profile.account_id,
+                })
+                .select()
+                .single()
+              system = result.data
             }
-            continue
+
+            if (system) {
+              processSystemIds.push(system.id)
+            }
           }
 
-          // Upsert system - check if it already exists first
-          const { data: existingSystem } = await supabaseAdmin
-            .from('systems')
-            .select('id')
-            .eq('pm_tag_id', systemTag.id.toString())
-            .eq('account_id', profile.account_id)
-            .maybeSingle()
+          // Extract and upsert controls
+          const controlRefs = extractControls(processDetail)
+          const processControlIds: string[] = []
 
-          let system
-          if (existingSystem) {
-            // Update existing system
-            const result = await supabaseAdmin
-              .from('systems')
-              .update({
-                system_name: systemTag.name,
-                system_id: systemTag.id.toString(),
-                modified_by: profile.email,
-              })
-              .eq('id', existingSystem.id)
-              .select()
-              .single()
-            system = result.data
-          } else {
-            // Insert new system
-            const result = await supabaseAdmin
-              .from('systems')
-              .insert({
-                system_name: systemTag.name,
-                system_id: systemTag.id.toString(),
-                pm_tag_id: systemTag.id.toString(),
-                modified_by: profile.email,
-                account_id: profile.account_id,
-              })
-              .select()
-              .single()
-            system = result.data
-          }
-
-          if (system) {
-            processSystemIds.push(system.id)
-            processedSystemIds.add(systemTag.id)
-            systemsAdded++
-          }
-        }
-
-        // Extract and save controls
-        const controlRefs = extractControls(processDetail)
-        const processControlIds: string[] = []
-
-        for (const controlRef of controlRefs) {
-          if (processedControlIds.has(controlRef.id)) {
-            // Control already processed, just get its UUID
+          for (const controlRef of controlRefs) {
             const { data: existingControl } = await supabaseAdmin
               .from('controls')
               .select('id')
               .eq('pm_control_id', controlRef.id)
               .eq('account_id', profile.account_id)
-              .single()
+              .maybeSingle()
 
+            let control
             if (existingControl) {
-              processControlIds.push(existingControl.id)
+              const result = await supabaseAdmin
+                .from('controls')
+                .update({
+                  control_name: controlRef.name,
+                  modified_by: profile.email,
+                })
+                .eq('id', existingControl.id)
+                .select()
+                .single()
+              control = result.data
+            } else {
+              const result = await supabaseAdmin
+                .from('controls')
+                .insert({
+                  control_name: controlRef.name,
+                  pm_control_id: controlRef.id,
+                  modified_by: profile.email,
+                  account_id: profile.account_id,
+                })
+                .select()
+                .single()
+              control = result.data
             }
-            continue
+
+            if (control) {
+              processControlIds.push(control.id)
+            }
           }
 
-          // Upsert control - check if it already exists first
-          const { data: existingControl } = await supabaseAdmin
-            .from('controls')
+          // Upsert process
+          const { data: existingProcess } = await supabaseAdmin
+            .from('processes')
             .select('id')
-            .eq('pm_control_id', controlRef.id)
+            .eq('pm_process_id', processDetail.processJson.Id)
             .eq('account_id', profile.account_id)
             .maybeSingle()
 
-          let control
-          if (existingControl) {
-            // Update existing control
+          let savedProcess
+          if (existingProcess) {
             const result = await supabaseAdmin
-              .from('controls')
+              .from('processes')
               .update({
-                control_name: controlRef.name,
+                process_name: processDetail.processJson.Name,
+                process_unique_id: processDetail.processJson.UniqueId,
+                owner_username: processDetail.processJson.Owner || null,
                 modified_by: profile.email,
               })
-              .eq('id', existingControl.id)
+              .eq('id', existingProcess.id)
               .select()
               .single()
-            control = result.data
+            savedProcess = result.data
           } else {
-            // Insert new control
             const result = await supabaseAdmin
-              .from('controls')
+              .from('processes')
               .insert({
-                control_name: controlRef.name,
-                pm_control_id: controlRef.id,
+                process_name: processDetail.processJson.Name,
+                process_unique_id: processDetail.processJson.UniqueId,
+                pm_process_id: processDetail.processJson.Id,
+                owner_username: processDetail.processJson.Owner || null,
                 modified_by: profile.email,
                 account_id: profile.account_id,
               })
               .select()
               .single()
-            control = result.data
+            savedProcess = result.data
           }
 
-          if (control) {
-            processControlIds.push(control.id)
-            processedControlIds.add(controlRef.id)
-            controlsAdded++
-          }
-        }
-
-        // Upsert process - check if it already exists first
-        const { data: existingProcess } = await supabaseAdmin
-          .from('processes')
-          .select('id')
-          .eq('pm_process_id', processDetail.processJson.Id)
-          .eq('account_id', profile.account_id)
-          .maybeSingle()
-
-        let savedProcess
-        let processError
-
-        if (existingProcess) {
-          // Update existing process
-          const result = await supabaseAdmin
-            .from('processes')
-            .update({
-              process_name: processDetail.processJson.Name,
-              process_unique_id: processDetail.processJson.UniqueId,
-              owner_username: processDetail.processJson.Owner || null,
-              modified_by: profile.email,
-            })
-            .eq('id', existingProcess.id)
-            .select()
-            .single()
-          savedProcess = result.data
-          processError = result.error
-        } else {
-          // Insert new process
-          const result = await supabaseAdmin
-            .from('processes')
-            .insert({
-              process_name: processDetail.processJson.Name,
-              process_unique_id: processDetail.processJson.UniqueId,
-              pm_process_id: processDetail.processJson.Id,
-              owner_username: processDetail.processJson.Owner || null,
-              modified_by: profile.email,
-              account_id: profile.account_id,
-            })
-            .select()
-            .single()
-          savedProcess = result.data
-          processError = result.error
-        }
-
-        if (processError) {
-          console.error(`Failed to save process ${processDetail.processJson.Name}:`, processError)
-        }
-
-        if (savedProcess) {
-          // Update process-system relationships
-          // First, delete existing relationships for this process
-          await supabaseAdmin
-            .from('process_systems')
-            .delete()
-            .eq('process_id', savedProcess.id)
-
-          // Then, create new relationships
-          if (processSystemIds.length > 0) {
+          if (savedProcess) {
+            // Update process-system relationships
             await supabaseAdmin
               .from('process_systems')
-              .insert(
-                processSystemIds.map(systemId => ({
-                  process_id: savedProcess.id,
-                  system_id: systemId,
-                }))
-              )
-          }
+              .delete()
+              .eq('process_id', savedProcess.id)
 
-          // Update process-control relationships
-          // First, delete existing relationships for this process
-          await supabaseAdmin
-            .from('process_controls')
-            .delete()
-            .eq('process_id', savedProcess.id)
+            if (processSystemIds.length > 0) {
+              await supabaseAdmin
+                .from('process_systems')
+                .insert(
+                  processSystemIds.map(systemId => ({
+                    process_id: savedProcess.id,
+                    system_id: systemId,
+                  }))
+                )
+            }
 
-          // Then, create new relationships
-          if (processControlIds.length > 0) {
+            // Update process-control relationships
             await supabaseAdmin
               .from('process_controls')
-              .insert(
-                processControlIds.map(controlId => ({
-                  process_id: savedProcess.id,
-                  control_id: controlId,
-                }))
-              )
+              .delete()
+              .eq('process_id', savedProcess.id)
+
+            if (processControlIds.length > 0) {
+              await supabaseAdmin
+                .from('process_controls')
+                .insert(
+                  processControlIds.map(controlId => ({
+                    process_id: savedProcess.id,
+                    control_id: controlId,
+                  }))
+                )
+            }
+
+            successCount++
           }
-
-          processesProcessed++
+        } catch (error: any) {
+          console.error(`Failed to process ${processUniqueId}:`, error?.message)
+          // Continue with next process
         }
-
-        // Add small delay to avoid rate limiting (reduced from 100ms to 50ms)
-        await new Promise(resolve => setTimeout(resolve, 50))
-        }
-
-        // INCREMENTAL SAVE: Save progress after each batch completes
-        console.log(`Completed batch ${batchNum}/${totalBatches}. Saving progress...`)
-
-        // Update sync history with current progress and processed IDs
-        await supabaseAdmin
-          .from('sync_history')
-          .update({
-            last_processed_index: endIdx,
-            processed_pm_ids: Array.from(syncedProcessIds),
-            examined_pm_ids: Array.from(examinedProcessIds),
-            records_synced: processesProcessed,
-          })
-          .eq('id', syncRecord.id)
-
-        console.log(`Batch ${batchNum}/${totalBatches} saved. Processed ${processesProcessed} CPS230 processes.`)
       }
 
-      // Clean up processes that no longer have CPS230 tag or were deleted
-      const processesToDelete = Array.from(existingPmProcessIds).filter(
-        id => !syncedProcessIds.has(id as number)
+      // Update progress
+      const newProcessedCount = processedCount + successCount
+      await supabaseAdmin
+        .from('sync_history')
+        .update({
+          processed_count: newProcessedCount,
+          records_synced: newProcessedCount,
+        })
+        .eq('id', syncRecord.id)
+
+      const remaining = processQueue.length - newProcessedCount
+      const percentComplete = Math.round((newProcessedCount / processQueue.length) * 100)
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          mode: 'process',
+          syncId: syncRecord.id,
+          processed: newProcessedCount,
+          total: processQueue.length,
+          remaining: remaining,
+          percentComplete: percentComplete,
+          message: remaining > 0
+            ? `Processed ${successCount} processes. ${remaining} remaining. Call again to continue.`
+            : 'Batch complete! Call again to finish sync.',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
       )
-
-      if (processesToDelete.length > 0) {
-        await supabaseAdmin
-          .from('processes')
-          .delete()
-          .in('pm_process_id', processesToDelete)
-          .eq('account_id', profile.account_id)
-      }
-
-      // Update sync history
-      await supabaseAdmin
-        .from('sync_history')
-        .update({
-          status: 'success',
-          records_synced: processesProcessed,
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', syncRecord.id)
-
-      // Update last sync timestamp in settings
-      await supabaseAdmin
-        .from('settings')
-        .upsert({
-          key: 'last_sync_timestamp',
-          value: new Date().toISOString(),
-          modified_by: profile.email,
-          account_id: profile.account_id,
-        }, {
-          onConflict: 'key,account_id',
-        })
-
-      console.log(`Sync completed: ${processesProcessed} processes, ${systemsAdded} systems, ${controlsAdded} controls, ${processesToDelete.length} deleted`)
-    } catch (error: any) {
-      // Update sync history with error
-      console.error('Sync error:', error)
-      await supabaseAdmin
-        .from('sync_history')
-        .update({
-          status: 'failed',
-          error_message: error?.message || 'Unknown error',
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', syncRecord.id)
     }
-    })() // Execute the async function immediately
 
-    // Return immediately to the client with sync started status
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'Sync started',
-        syncId: syncRecord.id,
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      }
-    )
+    throw new Error('Invalid mode. Use mode=init or mode=process')
   } catch (error: any) {
     return new Response(
       JSON.stringify({
