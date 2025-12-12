@@ -32,11 +32,46 @@ export function useSyncProcessManager() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => syncProcessManagerApi.sync(),
+    mutationFn: async (onProgress?: (progress: { processed: number; total: number; percentComplete: number }) => void) => {
+      // Phase 1: Initialize sync
+      const initResponse = await syncProcessManagerApi.init();
+      console.log('Sync initialized:', initResponse);
+
+      // Phase 2: Process batches until complete
+      let isComplete = false;
+      let response;
+
+      while (!isComplete) {
+        response = await syncProcessManagerApi.processBatch();
+        console.log('Batch processed:', response);
+
+        // Report progress to caller
+        if (onProgress) {
+          onProgress({
+            processed: response.processed,
+            total: response.total,
+            percentComplete: response.percentComplete,
+          });
+        }
+
+        // Check if sync is complete
+        if (response.completed || response.remaining === 0) {
+          isComplete = true;
+        }
+
+        // Small delay between batches to avoid overwhelming the API
+        if (!isComplete) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      return response;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['processes'] });
       queryClient.invalidateQueries({ queryKey: ['systems'] });
       queryClient.invalidateQueries({ queryKey: ['sync-history'] });
+      queryClient.invalidateQueries({ queryKey: ['latest-sync'] });
     },
   });
 }

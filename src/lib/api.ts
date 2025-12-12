@@ -292,11 +292,46 @@ export const syncHistoryApi = {
 // SYNC PROCESS MANAGER API
 // ============================================================================
 
+export interface SyncInitResponse {
+  success: boolean
+  mode: 'init'
+  syncId: string
+  totalProcesses: number
+  message: string
+}
+
+export interface SyncProcessResponse {
+  success: boolean
+  mode: 'process'
+  syncId: string
+  processed: number
+  total: number
+  remaining: number
+  percentComplete: number
+  message: string
+  completed?: boolean
+  totalProcessed?: number
+}
+
 export const syncProcessManagerApi = {
-  sync: async (): Promise<{ success: boolean; message: string; syncId: string }> => {
-    const response = await apiFetch<{ success: boolean; message: string; syncId: string }>('sync-process-manager', {
+  // Initialize sync - searches for processes and queues them
+  init: async (): Promise<SyncInitResponse> => {
+    const response = await apiFetch<SyncInitResponse>('sync-process-manager?mode=init', {
       method: 'POST',
     })
     return response
+  },
+
+  // Process next batch - processes next 5 processes from queue
+  processBatch: async (): Promise<SyncProcessResponse> => {
+    const response = await apiFetch<SyncProcessResponse>('sync-process-manager?mode=process', {
+      method: 'POST',
+    })
+    return response
+  },
+
+  // Legacy sync method (calls init - kept for backwards compatibility)
+  sync: async (): Promise<{ success: boolean; message: string; syncId: string }> => {
+    return await syncProcessManagerApi.init()
   },
 }
