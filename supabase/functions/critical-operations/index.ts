@@ -55,10 +55,20 @@ serve(async (req) => {
         // Validate and whitelist input fields
         const validatedData = validateCriticalOperationInput(body)
 
+        // Get user's account_id for multi-tenancy
+        const { data: profile, error: profileError } = await supabaseClient
+          .from('user_profiles')
+          .select('account_id')
+          .eq('user_id', user.id)
+          .single()
+
+        if (profileError) throw profileError
+
         const { data, error } = await supabaseClient
           .from('critical_operations')
           .insert({
             ...validatedData,
+            account_id: profile.account_id,
             modified_by: user.email || 'unknown',
           })
           .select()
