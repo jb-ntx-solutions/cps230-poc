@@ -1,9 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { corsHeaders, getCorsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { authenticateUser } from '../_shared/auth.ts'
 import { validateProcessInput, ValidationError } from '../_shared/validation.ts'
 
-serve(async (req) => {
+serve(async (req: Request) => {
   const origin = req.headers.get('origin')
 
   // Handle CORS preflight requests
@@ -64,8 +64,8 @@ serve(async (req) => {
 
           const processWithSystems = {
             ...process,
-            systems: processSystems?.map(ps => ps.systems).filter(Boolean) || [],
-            controls: processControls?.map(pc => pc.controls).filter(Boolean) || [],
+            systems: processSystems?.map((ps: any) => ps.systems).filter(Boolean) || [],
+            controls: processControls?.map((pc: any) => pc.controls).filter(Boolean) || [],
             criticalOperations: criticalOperations || [],
           }
 
@@ -83,7 +83,7 @@ serve(async (req) => {
 
           // For each process, get its associated systems, controls, and critical operations
           const processesWithSystems = await Promise.all(
-            (processes || []).map(async (process) => {
+            (processes || []).map(async (process: any) => {
               const { data: processSystems } = await supabaseClient
                 .from('process_systems')
                 .select(`
@@ -115,8 +115,8 @@ serve(async (req) => {
 
               return {
                 ...process,
-                systems: processSystems?.map(ps => ps.systems).filter(Boolean) || [],
-                controls: processControls?.map(pc => pc.controls).filter(Boolean) || [],
+                systems: processSystems?.map((ps: any) => ps.systems).filter(Boolean) || [],
+                controls: processControls?.map((pc: any) => pc.controls).filter(Boolean) || [],
                 criticalOperations,
               }
             })

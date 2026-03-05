@@ -18,23 +18,36 @@ CREATE TABLE IF NOT EXISTS public.critical_operation_processes (
 );
 
 -- =====================================================
--- Migrate existing data
+-- Migrate existing data (only if process_id column exists)
 -- =====================================================
--- Move existing process_id relationships to the junction table
-INSERT INTO public.critical_operation_processes (critical_operation_id, process_id, modified_by)
-SELECT
-    id,
-    process_id,
-    modified_by
-FROM public.critical_operations
-WHERE process_id IS NOT NULL;
+-- Check if process_id column exists and migrate data if it does
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = 'critical_operations'
+        AND column_name = 'process_id'
+    ) THEN
+        -- Move existing process_id relationships to the junction table
+        INSERT INTO public.critical_operation_processes (critical_operation_id, process_id, modified_by)
+        SELECT
+            id,
+            process_id,
+            modified_by
+        FROM public.critical_operations
+        WHERE process_id IS NOT NULL;
 
--- =====================================================
--- Remove old foreign key column
--- =====================================================
--- Drop the process_id column from critical_operations table
-ALTER TABLE public.critical_operations
-DROP COLUMN IF EXISTS process_id;
+        -- Drop the process_id column from critical_operations table
+        ALTER TABLE public.critical_operations
+        DROP COLUMN process_id;
+
+        RAISE NOTICE 'Migrated existing process_id data and dropped column';
+    ELSE
+        RAISE NOTICE 'process_id column does not exist, skipping data migration';
+    END IF;
+END $$;
 
 -- =====================================================
 -- Enable Row Level Security
@@ -44,6 +57,12 @@ ALTER TABLE public.critical_operation_processes ENABLE ROW LEVEL SECURITY;
 -- =====================================================
 -- RLS Policies
 -- =====================================================
+
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Authenticated users can view critical operation processes" ON public.critical_operation_processes;
+DROP POLICY IF EXISTS "Promasters can insert critical operation processes" ON public.critical_operation_processes;
+DROP POLICY IF EXISTS "Promasters can update critical operation processes" ON public.critical_operation_processes;
+DROP POLICY IF EXISTS "Promasters can delete critical operation processes" ON public.critical_operation_processes;
 
 -- SELECT: Authenticated users can view critical operation-process relationships
 CREATE POLICY "Authenticated users can view critical operation processes"
