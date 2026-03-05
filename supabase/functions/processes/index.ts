@@ -54,11 +54,19 @@ serve(async (req) => {
             `)
             .eq('process_id', id)
 
-          // Get associated critical operations
-          const { data: criticalOperations } = await supabaseClient
-            .from('critical_operations')
-            .select('id, operation_name')
+          // Get associated critical operations via junction table
+          const { data: criticalOperationRelations } = await supabaseClient
+            .from('critical_operation_processes')
+            .select(`
+              critical_operation_id,
+              critical_operations:critical_operation_id (
+                id,
+                operation_name
+              )
+            `)
             .eq('process_id', id)
+
+          const criticalOperations = criticalOperationRelations?.map(rel => rel.critical_operations).filter(Boolean) || []
 
           const processWithSystems = {
             ...process,
@@ -104,16 +112,24 @@ serve(async (req) => {
                 `)
                 .eq('process_id', process.id)
 
-              const { data: criticalOperations } = await supabaseClient
-                .from('critical_operations')
-                .select('id, operation_name')
+              const { data: criticalOperationRelations } = await supabaseClient
+                .from('critical_operation_processes')
+                .select(`
+                  critical_operation_id,
+                  critical_operations:critical_operation_id (
+                    id,
+                    operation_name
+                  )
+                `)
                 .eq('process_id', process.id)
+
+              const criticalOperations = criticalOperationRelations?.map(rel => rel.critical_operations).filter(Boolean) || []
 
               return {
                 ...process,
                 systems: processSystems?.map(ps => ps.systems).filter(Boolean) || [],
                 controls: processControls?.map(pc => pc.controls).filter(Boolean) || [],
-                criticalOperations: criticalOperations || [],
+                criticalOperations,
               }
             })
           )

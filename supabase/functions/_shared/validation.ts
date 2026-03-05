@@ -242,7 +242,6 @@ export interface CriticalOperationInput {
   operation_name?: string
   description?: string | null
   system_id?: string | null
-  process_id?: string | null
   color_code?: string | null
 }
 
@@ -251,7 +250,6 @@ export function validateCriticalOperationInput(body: any): Partial<CriticalOpera
     'operation_name',
     'description',
     'system_id',
-    'process_id',
     'color_code',
   ]
 
@@ -272,10 +270,6 @@ export function validateCriticalOperationInput(body: any): Partial<CriticalOpera
   // Validate UUIDs if provided
   if (data.system_id && !validateUUID(data.system_id)) {
     throw new ValidationError('system_id must be a valid UUID')
-  }
-
-  if (data.process_id && !validateUUID(data.process_id)) {
-    throw new ValidationError('process_id must be a valid UUID')
   }
 
   return data

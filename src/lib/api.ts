@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { System, Process, Control, CriticalOperation, Setting, UserProfile, SyncHistory } from '@/types/database'
+import type { System, Process, Control, CriticalOperation, CriticalOperationProcess, Setting, UserProfile, SyncHistory } from '@/types/database'
 
 // Use /data/v1 which will be rewritten by Vercel to Supabase Edge Functions
 // This hides the Supabase URL from the client
@@ -175,35 +175,60 @@ export const controlsApi = {
 // CRITICAL OPERATIONS API
 // ============================================================================
 
+export interface CriticalOperationWithRelations extends CriticalOperation {
+  system?: {
+    id: string
+    system_name: string
+  }
+  processes?: Array<{
+    id: string
+    process_name: string
+  }>
+}
+
 export const criticalOperationsApi = {
-  getAll: async (): Promise<CriticalOperation[]> => {
-    const response = await apiFetch<{ data: CriticalOperation[] }>('critical-operations')
+  getAll: async (): Promise<CriticalOperationWithRelations[]> => {
+    const response = await apiFetch<{ data: CriticalOperationWithRelations[] }>('critical-operations')
     return response.data
   },
 
-  getById: async (id: string): Promise<CriticalOperation> => {
-    const response = await apiFetch<{ data: CriticalOperation }>(`critical-operations?id=${id}`)
+  getById: async (id: string): Promise<CriticalOperationWithRelations> => {
+    const response = await apiFetch<{ data: CriticalOperationWithRelations }>(`critical-operations?id=${id}`)
     return response.data
   },
 
-  create: async (operation: Omit<CriticalOperation, 'id' | 'created_at' | 'modified_date' | 'modified_by'>): Promise<CriticalOperation> => {
+  create: async (operation: Omit<CriticalOperation, 'id' | 'created_at' | 'modified_date' | 'modified_by'>, processIds?: string[]): Promise<CriticalOperation> => {
     const response = await apiFetch<{ data: CriticalOperation }>('critical-operations', {
       method: 'POST',
-      body: JSON.stringify(operation),
+      body: JSON.stringify({ ...operation, processIds }),
     })
     return response.data
   },
 
-  update: async (id: string, updates: Partial<Omit<CriticalOperation, 'id' | 'created_at'>>): Promise<CriticalOperation> => {
+  update: async (id: string, updates: Partial<Omit<CriticalOperation, 'id' | 'created_at'>>, processIds?: string[]): Promise<CriticalOperation> => {
     const response = await apiFetch<{ data: CriticalOperation }>(`critical-operations?id=${id}`, {
       method: 'PATCH',
-      body: JSON.stringify(updates),
+      body: JSON.stringify({ ...updates, processIds }),
     })
     return response.data
   },
 
   delete: async (id: string): Promise<void> => {
     await apiFetch<{ success: boolean }>(`critical-operations?id=${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  // Manage process relationships
+  addProcess: async (criticalOperationId: string, processId: string, processStep?: string, activityDescription?: string): Promise<void> => {
+    await apiFetch<{ success: boolean }>('critical-operations/processes', {
+      method: 'POST',
+      body: JSON.stringify({ criticalOperationId, processId, processStep, activityDescription }),
+    })
+  },
+
+  removeProcess: async (criticalOperationId: string, processId: string): Promise<void> => {
+    await apiFetch<{ success: boolean }>(`critical-operations/processes?critical_operation_id=${criticalOperationId}&process_id=${processId}`, {
       method: 'DELETE',
     })
   },

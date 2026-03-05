@@ -13,8 +13,8 @@ export function useCreateCriticalOperation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (operation: Omit<CriticalOperation, 'id' | 'created_at' | 'modified_date' | 'modified_by'>) =>
-      criticalOperationsApi.create(operation),
+    mutationFn: ({ processIds, ...operation }: Omit<CriticalOperation, 'id' | 'created_at' | 'modified_date' | 'modified_by'> & { processIds?: string[] }) =>
+      criticalOperationsApi.create(operation, processIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['critical_operations'] });
     },
@@ -25,8 +25,8 @@ export function useUpdateCriticalOperation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...updates }: Partial<CriticalOperation> & { id: string }) =>
-      criticalOperationsApi.update(id, updates),
+    mutationFn: ({ id, processIds, ...updates }: Partial<CriticalOperation> & { id: string; processIds?: string[] }) =>
+      criticalOperationsApi.update(id, updates, processIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['critical_operations'] });
     },

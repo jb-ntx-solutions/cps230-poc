@@ -24,6 +24,7 @@ import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { useCriticalOperations, useDeleteCriticalOperation } from '@/hooks/useCriticalOperations';
 import { useAuth } from '@/contexts/AuthContext';
 import type { CriticalOperation } from '@/types/database';
+import type { CriticalOperationWithRelations } from '@/lib/api';
 import { toast } from 'sonner';
 
 export function CriticalOperationsTable() {
@@ -32,11 +33,11 @@ export function CriticalOperationsTable() {
   const { isPromaster } = useAuth();
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedOperation, setSelectedOperation] = useState<CriticalOperation | null>(null);
+  const [selectedOperation, setSelectedOperation] = useState<CriticalOperationWithRelations | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [operationToDelete, setOperationToDelete] = useState<CriticalOperation | null>(null);
+  const [operationToDelete, setOperationToDelete] = useState<CriticalOperationWithRelations | null>(null);
 
-  const handleEdit = (operation: CriticalOperation) => {
+  const handleEdit = (operation: CriticalOperationWithRelations) => {
     setSelectedOperation(operation);
     setDialogOpen(true);
   };
@@ -46,7 +47,7 @@ export function CriticalOperationsTable() {
     setDialogOpen(true);
   };
 
-  const handleDeleteClick = (operation: CriticalOperation) => {
+  const handleDeleteClick = (operation: CriticalOperationWithRelations) => {
     setOperationToDelete(operation);
     setDeleteDialogOpen(true);
   };
@@ -65,7 +66,7 @@ export function CriticalOperationsTable() {
     }
   };
 
-  const columns: ColumnDef<CriticalOperation>[] = [
+  const columns: ColumnDef<CriticalOperationWithRelations>[] = [
     {
       accessorKey: 'operation_name',
       header: 'Operation Name',
@@ -113,16 +114,20 @@ export function CriticalOperationsTable() {
       },
     },
     {
-      id: 'process',
-      header: 'Process',
+      id: 'processes',
+      header: 'Processes',
       cell: ({ row }) => {
-        const process = (row.original as any).process;
+        const processes = row.original.processes || [];
         return (
-          <div className="text-sm">
-            {process?.process_name ? (
-              <Badge variant="outline">{process.process_name}</Badge>
+          <div className="flex flex-wrap gap-1">
+            {processes.length > 0 ? (
+              processes.map((process) => (
+                <Badge key={process.id} variant="outline" className="text-xs">
+                  {process.process_name}
+                </Badge>
+              ))
             ) : (
-              <span className="text-muted-foreground">—</span>
+              <span className="text-muted-foreground text-sm">—</span>
             )}
           </div>
         );

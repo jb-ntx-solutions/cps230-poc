@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   Dialog,
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -20,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { CriticalOperation } from '@/types/database';
+import type { CriticalOperationWithRelations } from '@/lib/api';
 import { useCreateCriticalOperation, useUpdateCriticalOperation } from '@/hooks/useCriticalOperations';
 import { useSystems } from '@/hooks/useSystems';
 import { useProcesses } from '@/hooks/useProcesses';
@@ -28,14 +30,13 @@ import { toast } from 'sonner';
 interface CriticalOperationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  operation?: CriticalOperation | null;
+  operation?: CriticalOperationWithRelations | null;
 }
 
 interface CriticalOperationFormData {
   operation_name: string;
   description: string;
   system_id: string;
-  process_id: string;
   color_code: string;
 }
 
@@ -48,6 +49,7 @@ export function CriticalOperationDialog({
   const updateOperation = useUpdateCriticalOperation();
   const { data: systems = [] } = useSystems();
   const { data: processes = [] } = useProcesses();
+  const [selectedProcessIds, setSelectedProcessIds] = useState<string[]>([]);
 
   const {
     register,
@@ -61,7 +63,6 @@ export function CriticalOperationDialog({
       operation_name: '',
       description: '',
       system_id: '',
-      process_id: '',
       color_code: '',
     },
   });
@@ -72,17 +73,18 @@ export function CriticalOperationDialog({
         operation_name: operation.operation_name,
         description: operation.description || '',
         system_id: operation.system_id || '',
-        process_id: operation.process_id || '',
         color_code: operation.color_code || '',
       });
+      // Load existing process IDs
+      setSelectedProcessIds(operation.processes?.map(p => p.id) || []);
     } else if (open) {
       reset({
         operation_name: '',
         description: '',
         system_id: '',
-        process_id: '',
         color_code: '',
       });
+      setSelectedProcessIds([]);
     }
   }, [open, operation, reset]);
 
@@ -94,8 +96,8 @@ export function CriticalOperationDialog({
           operation_name: data.operation_name,
           description: data.description || null,
           system_id: data.system_id || null,
-          process_id: data.process_id || null,
           color_code: data.color_code || null,
+          processIds: selectedProcessIds,
         });
         toast.success('Critical operation updated successfully');
       } else {
@@ -103,8 +105,8 @@ export function CriticalOperationDialog({
           operation_name: data.operation_name,
           description: data.description || null,
           system_id: data.system_id || null,
-          process_id: data.process_id || null,
           color_code: data.color_code || null,
+          processIds: selectedProcessIds,
         });
         toast.success('Critical operation created successfully');
       }
@@ -113,6 +115,14 @@ export function CriticalOperationDialog({
       toast.error(operation ? 'Failed to update operation' : 'Failed to create operation');
       console.error(error);
     }
+  };
+
+  const toggleProcess = (processId: string) => {
+    setSelectedProcessIds(prev =>
+      prev.includes(processId)
+        ? prev.filter(id => id !== processId)
+        : [...prev, processId]
+    );
   };
 
   return (
@@ -177,23 +187,33 @@ export function CriticalOperationDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="process_id">Associated Process</Label>
-              <Select
-                value={watch('process_id') || undefined}
-                onValueChange={(value) => setValue('process_id', value === 'none' ? '' : value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a process (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {processes.map((process) => (
-                    <SelectItem key={process.id} value={process.id}>
-                      {process.process_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Associated Processes</Label>
+              <div className="border rounded-md p-3 max-h-48 overflow-y-auto">
+                {processes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No processes available</p>
+                ) : (
+                  <div className="space-y-2">
+                    {processes.map((process) => (
+                      <div key={process.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`process-${process.id}`}
+                          checked={selectedProcessIds.includes(process.id)}
+                          onCheckedChange={() => toggleProcess(process.id)}
+                        />
+                        <label
+                          htmlFor={`process-${process.id}`}
+                          className="text-sm font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
+                          {process.process_name}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {selectedProcessIds.length} process{selectedProcessIds.length !== 1 ? 'es' : ''} selected
+              </p>
             </div>
 
             <div className="grid gap-2">

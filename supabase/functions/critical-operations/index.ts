@@ -21,28 +21,65 @@ serve(async (req) => {
     switch (req.method) {
       case 'GET': {
         if (id) {
-          // Get single critical operation
-          const { data, error } = await supabaseClient
+          // Get single critical operation with system and processes
+          const { data: operation, error } = await supabaseClient
             .from('critical_operations')
-            .select('*, system:systems(system_name), process:processes(process_name)')
+            .select('*, system:systems(system_name)')
             .eq('id', id)
             .single()
 
           if (error) throw error
 
-          return new Response(JSON.stringify({ data }), {
+          // Get associated processes via junction table
+          const { data: processRelations, error: processError } = await supabaseClient
+            .from('critical_operation_processes')
+            .select('process_id, processes(id, process_name)')
+            .eq('critical_operation_id', id)
+
+          if (processError) throw processError
+
+          // Add processes to the operation object
+          const operationWithProcesses = {
+            ...operation,
+            processes: processRelations?.map(rel => rel.processes).filter(Boolean) || []
+          }
+
+          return new Response(JSON.stringify({ data: operationWithProcesses }), {
             headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           })
         } else {
-          // Get all critical operations
-          const { data, error } = await supabaseClient
+          // Get all critical operations with system
+          const { data: operations, error } = await supabaseClient
             .from('critical_operations')
-            .select('*, system:systems(system_name), process:processes(process_name)')
+            .select('*, system:systems(system_name)')
             .order('operation_name', { ascending: true })
 
           if (error) throw error
 
-          return new Response(JSON.stringify({ data }), {
+          // Get all process relationships for all operations
+          const operationIds = operations?.map(op => op.id) || []
+          const { data: allProcessRelations } = await supabaseClient
+            .from('critical_operation_processes')
+            .select('critical_operation_id, process_id, processes(id, process_name)')
+            .in('critical_operation_id', operationIds)
+
+          // Group processes by critical operation
+          const processesMap = new Map<string, any[]>()
+          allProcessRelations?.forEach((rel: any) => {
+            const processes = processesMap.get(rel.critical_operation_id) || []
+            if (rel.processes) {
+              processes.push(rel.processes)
+            }
+            processesMap.set(rel.critical_operation_id, processes)
+          })
+
+          // Add processes to each operation
+          const operationsWithProcesses = operations?.map(op => ({
+            ...op,
+            processes: processesMap.get(op.id) || []
+          })) || []
+
+          return new Response(JSON.stringify({ data: operationsWithProcesses }), {
             headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           })
         }
@@ -51,6 +88,7 @@ serve(async (req) => {
       case 'POST': {
         // Create critical operation
         const body = await req.json()
+        const processIds: string[] = body.processIds || []
 
         // Validate and whitelist input fields
         const validatedData = validateCriticalOperationInput(body)
@@ -64,7 +102,7 @@ serve(async (req) => {
 
         if (profileError) throw profileError
 
-        const { data, error } = await supabaseClient
+        const { data: operation, error } = await supabaseClient
           .from('critical_operations')
           .insert({
             ...validatedData,
@@ -76,7 +114,29 @@ serve(async (req) => {
 
         if (error) throw error
 
-        return new Response(JSON.stringify({ data }), {
+        // Create process relationships if processIds provided
+        if (processIds.length > 0) {
+          const processRelations = processIds.map(processId => ({
+            critical_operation_id: operation.id,
+            process_id: processId,
+            modified_by: user.email || 'unknown',
+          }))
+
+          const { error: junctionError } = await supabaseClient
+            .from('critical_operation_processes')
+            .insert(processRelations)
+
+          if (junctionError) {
+            // Rollback: delete the created operation
+            await supabaseClient
+              .from('critical_operations')
+              .delete()
+              .eq('id', operation.id)
+            throw junctionError
+          }
+        }
+
+        return new Response(JSON.stringify({ data: operation }), {
           headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           status: 201,
         })
@@ -90,11 +150,12 @@ serve(async (req) => {
         }
 
         const body = await req.json()
+        const processIds: string[] | undefined = body.processIds
 
         // Validate and whitelist input fields
         const validatedData = validateCriticalOperationInput(body)
 
-        const { data, error } = await supabaseClient
+        const { data: operation, error } = await supabaseClient
           .from('critical_operations')
           .update({
             ...validatedData,
@@ -107,7 +168,33 @@ serve(async (req) => {
 
         if (error) throw error
 
-        return new Response(JSON.stringify({ data }), {
+        // Update process relationships if processIds provided
+        if (processIds !== undefined) {
+          // Delete existing relationships
+          const { error: deleteError } = await supabaseClient
+            .from('critical_operation_processes')
+            .delete()
+            .eq('critical_operation_id', id)
+
+          if (deleteError) throw deleteError
+
+          // Create new relationships
+          if (processIds.length > 0) {
+            const processRelations = processIds.map(processId => ({
+              critical_operation_id: id,
+              process_id: processId,
+              modified_by: user.email || 'unknown',
+            }))
+
+            const { error: junctionError } = await supabaseClient
+              .from('critical_operation_processes')
+              .insert(processRelations)
+
+            if (junctionError) throw junctionError
+          }
+        }
+
+        return new Response(JSON.stringify({ data: operation }), {
           headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         })
       }

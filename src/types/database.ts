@@ -126,7 +126,6 @@ export interface Database {
           operation_name: string
           description: string | null
           system_id: string | null
-          process_id: string | null
           color_code: string | null
           modified_by: string
           modified_date: string
@@ -138,7 +137,6 @@ export interface Database {
           operation_name: string
           description?: string | null
           system_id?: string | null
-          process_id?: string | null
           color_code?: string | null
           modified_by: string
           modified_date?: string
@@ -150,12 +148,43 @@ export interface Database {
           operation_name?: string
           description?: string | null
           system_id?: string | null
-          process_id?: string | null
           color_code?: string | null
           modified_by?: string
           modified_date?: string
           created_at?: string
           account_id?: string | null
+        }
+      }
+      critical_operation_processes: {
+        Row: {
+          id: string
+          critical_operation_id: string
+          process_id: string
+          process_step: string | null
+          activity_description: string | null
+          created_at: string
+          modified_by: string
+          modified_date: string
+        }
+        Insert: {
+          id?: string
+          critical_operation_id: string
+          process_id: string
+          process_step?: string | null
+          activity_description?: string | null
+          created_at?: string
+          modified_by?: string
+          modified_date?: string
+        }
+        Update: {
+          id?: string
+          critical_operation_id?: string
+          process_id?: string
+          process_step?: string | null
+          activity_description?: string | null
+          created_at?: string
+          modified_by?: string
+          modified_date?: string
         }
       }
       controls: {
@@ -369,6 +398,7 @@ export type Account = Database['public']['Tables']['accounts']['Row'];
 export type Process = Database['public']['Tables']['processes']['Row'];
 export type System = Database['public']['Tables']['systems']['Row'];
 export type CriticalOperation = Database['public']['Tables']['critical_operations']['Row'];
+export type CriticalOperationProcess = Database['public']['Tables']['critical_operation_processes']['Row'];
 export type Control = Database['public']['Tables']['controls']['Row'];
 export type UserProfile = Database['public']['Tables']['user_profiles']['Row'];
 export type Setting = Database['public']['Tables']['settings']['Row'];
