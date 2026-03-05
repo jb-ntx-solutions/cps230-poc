@@ -11,6 +11,16 @@ import { Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSettings, useUpdateSetting } from '@/hooks/useSettings';
 
+/**
+ * Convert hex color to rgba
+ */
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 interface ProcessData {
   id: string;
   process_name: string;
@@ -23,7 +33,7 @@ interface ProcessData {
   regions?: string[] | null;
   systems?: Array<{ id: string; system_name: string }>;
   controls?: Array<{ id: string }>;
-  criticalOperations?: Array<{ id: string }>;
+  criticalOperations?: Array<{ id: string; operation_name: string; color_code?: string | null }>;
 }
 
 interface BpmnCanvasProps {
@@ -182,14 +192,32 @@ export function BpmnCanvas({
       // Priority: Critical Operations > Controls (borders only)
       let borderApplied = false;
 
-      // Check Critical Operations (RED fill - highest priority)
+      // Check Critical Operations (custom color fill - highest priority)
       if (!borderApplied && filters.criticalOperations.length > 0) {
-        const matchesCriticalOp = processData.criticalOperations?.some(co =>
+        const matchedCriticalOp = processData.criticalOperations?.find(co =>
           filters.criticalOperations.includes(co.id)
         );
 
-        if (matchesCriticalOp) {
-          canvas.addMarker(element, 'highlight-critical');
+        if (matchedCriticalOp) {
+          // Use custom color from critical operation or fallback to default red
+          const color = matchedCriticalOp.color_code || '#ef4444';
+          const colorClass = `highlight-critical-${color.replace('#', '')}`;
+
+          // Create dynamic style for this color if it doesn't exist
+          if (!document.getElementById(colorClass)) {
+            const style = document.createElement('style');
+            style.id = colorClass;
+            style.textContent = `
+              .${colorClass} .djs-visual > :nth-child(1) {
+                fill: ${hexToRgba(color, 0.3)} !important;
+                stroke: ${color} !important;
+                stroke-width: 2 !important;
+              }
+            `;
+            document.head.appendChild(style);
+          }
+
+          canvas.addMarker(element, colorClass);
           borderApplied = true;
         }
       }

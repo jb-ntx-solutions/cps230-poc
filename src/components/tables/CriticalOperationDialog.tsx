@@ -222,11 +222,13 @@ export function CriticalOperationDialog({
                 <Input
                   id="color_code"
                   type="color"
-                  {...register('color_code')}
+                  value={watch('color_code') || '#FF6633'}
+                  onChange={(e) => setValue('color_code', e.target.value)}
                   className="w-20 h-10 p-1"
                 />
                 <Input
-                  {...register('color_code')}
+                  value={watch('color_code') || ''}
+                  onChange={(e) => setValue('color_code', e.target.value)}
                   placeholder="#FF6633"
                   className="flex-1"
                 />
