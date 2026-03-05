@@ -57,16 +57,10 @@ serve(async (req) => {
           // Get associated critical operations via junction table
           const { data: criticalOperationRelations } = await supabaseClient
             .from('critical_operation_processes')
-            .select(`
-              critical_operation_id,
-              critical_operations:critical_operation_id (
-                id,
-                operation_name
-              )
-            `)
+            .select('critical_operations:critical_operation_id(id, operation_name)')
             .eq('process_id', id)
 
-          const criticalOperations = criticalOperationRelations?.map(rel => rel.critical_operations).filter(Boolean) || []
+          const criticalOperations = criticalOperationRelations?.map((rel: any) => rel.critical_operations).filter(Boolean) || []
 
           const processWithSystems = {
             ...process,
@@ -114,16 +108,10 @@ serve(async (req) => {
 
               const { data: criticalOperationRelations } = await supabaseClient
                 .from('critical_operation_processes')
-                .select(`
-                  critical_operation_id,
-                  critical_operations:critical_operation_id (
-                    id,
-                    operation_name
-                  )
-                `)
+                .select('critical_operations:critical_operation_id(id, operation_name)')
                 .eq('process_id', process.id)
 
-              const criticalOperations = criticalOperationRelations?.map(rel => rel.critical_operations).filter(Boolean) || []
+              const criticalOperations = criticalOperationRelations?.map((rel: any) => rel.critical_operations).filter(Boolean) || []
 
               return {
                 ...process,

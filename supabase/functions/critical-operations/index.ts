@@ -1,9 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { corsHeaders, getCorsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { authenticateUser } from '../_shared/auth.ts'
 import { validateCriticalOperationInput, ValidationError } from '../_shared/validation.ts'
 
-serve(async (req) => {
+serve(async (req: Request) => {
   const origin = req.headers.get('origin')
 
   // Handle CORS preflight requests
@@ -33,7 +33,7 @@ serve(async (req) => {
           // Get associated processes via junction table
           const { data: processRelations, error: processError } = await supabaseClient
             .from('critical_operation_processes')
-            .select('process_id, processes(id, process_name)')
+            .select('processes:process_id(id, process_name)')
             .eq('critical_operation_id', id)
 
           if (processError) throw processError
@@ -41,7 +41,7 @@ serve(async (req) => {
           // Add processes to the operation object
           const operationWithProcesses = {
             ...operation,
-            processes: processRelations?.map(rel => rel.processes).filter(Boolean) || []
+            processes: processRelations?.map((rel: any) => rel.processes).filter(Boolean) || []
           }
 
           return new Response(JSON.stringify({ data: operationWithProcesses }), {
@@ -57,10 +57,10 @@ serve(async (req) => {
           if (error) throw error
 
           // Get all process relationships for all operations
-          const operationIds = operations?.map(op => op.id) || []
+          const operationIds = operations?.map((op: any) => op.id) || []
           const { data: allProcessRelations } = await supabaseClient
             .from('critical_operation_processes')
-            .select('critical_operation_id, process_id, processes(id, process_name)')
+            .select('critical_operation_id, processes:process_id(id, process_name)')
             .in('critical_operation_id', operationIds)
 
           // Group processes by critical operation
